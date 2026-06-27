@@ -2,10 +2,9 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Parse incoming JSON payloads
 app.use(express.json());
 
-// Built-in CORS handling (No npm install required)
+// Built-in CORS headers configuration
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
@@ -98,7 +97,7 @@ let accounts = [
     { phone: "074203235", password: "R0978012009", status: "FREE" }
 ];
 
-// --- DASHBOARD HTML VIEW ---
+// --- DASHBOARD UI HTML ---
 app.get('/', (req, res) => {
     const totalAccounts = accounts.length;
     const freeAccounts = accounts.filter(acc => acc.status === 'FREE').length;
@@ -109,7 +108,7 @@ app.get('/', (req, res) => {
                 <div style="color:#f8fafc; font-weight:bold; font-size:1.1em;">📱 ${acc.phone}</div>
                 <div style="color:#94a3b8; font-size:0.9em; margin-top:4px;">🔑 Pass: ${acc.password}</div>
             </div>
-            <span style="background:${acc.status === 'FREE' ? '#065f46' : '#1e3a8a'}; color:${acc.status === 'FREE' ? '#34d399' : '#93c5fd'}; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:0.85em; text-transform:uppercase; letter-spacing:0.5px;">
+            <span style="background:${acc.status === 'FREE' ? '#065f46' : '#1e3a8a'}; color:${acc.status === 'FREE' ? '#34d399' : '#93c5fd'}; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:0.85em; text-transform:uppercase;">
                 ${acc.status}
             </span>
         </div>
@@ -122,34 +121,26 @@ app.get('/', (req, res) => {
         <title>Login Pool Manager</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { text-align: center; margin-bottom: 30px; position: relative; }
+            body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
             .badge { background: #10b981; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.8em; font-weight: bold; }
             .stats-bar { background: #1e293b; padding: 15px; border-radius: 10px; text-align: center; font-weight: bold; margin-bottom: 20px; border: 1px solid #334155; }
-            .btn-reset { display: block; width: 100%; background: #ef4444; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 1em; cursor: pointer; margin-bottom: 25px; transition: background 0.2s; }
-            .btn-reset:hover { background: #dc2626; }
+            .btn-reset { display: block; width: 100%; background: #ef4444; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 1em; cursor: pointer; margin-bottom: 25px; }
         </style>
     </head>
     <body>
         <div class="header">
-            <h1 style="margin: 10px 0 5px 0; color:#f1f5f9;">🔑 Login Pool Manager</h1>
-            <p style="color:#64748b; margin:0 0 15px 0;">Credentials Storage & Automation Router</p>
+            <h1 style="color:#f1f5f9; margin-bottom:5px;">🔑 Login Pool Manager</h1>
             <span class="badge">ONLINE</span>
         </div>
-
         <button class="btn-reset" onclick="resetPool()">🔄 RESET ALL TO FREE</button>
-
         <div class="stats-bar">
             Total Configured Accounts: ${totalAccounts} | <span style="color:#34d399;">Available: ${freeAccounts} Free</span>
         </div>
-
-        <div style="margin-top:20px;">
-            ${accountCards}
-        </div>
-
+        <div>${accountCards}</div>
         <script>
             function resetPool() {
-                if(confirm("Are you sure you want to change all accounts back to FREE status?")) {
+                if(confirm("Reset all accounts back to FREE status?")) {
                     fetch('/reset', { method: 'POST' })
                     .then(res => res.json())
                     .then(data => { if(data.success) window.location.reload(); });
@@ -162,31 +153,18 @@ app.get('/', (req, res) => {
     res.send(html);
 });
 
-// --- AUTOMATION LOGIN ENDPOINT ROUTER ---
+// --- API ENDPOINTS ---
 app.post('/request-login', (req, res) => {
     const availableAccount = accounts.find(acc => acc.status === 'FREE');
-
     if (availableAccount) {
         availableAccount.status = 'IN-USE';
-        console.log(`[POOL] Account ${availableAccount.phone} assigned successfully.`);
-        return res.json({
-            success: true,
-            phone: availableAccount.phone,
-            password: availableAccount.password
-        });
-    } else {
-        console.log(`[WARNING] Request received but pool is completely empty!`);
-        return res.json({
-            success: false,
-            error: "No free accounts available"
-        });
+        return res.json({ success: true, phone: availableAccount.phone, password: availableAccount.password });
     }
+    return res.json({ success: false, error: "No free accounts available" });
 });
 
-// --- MANUAL RESET ENDPOINT ---
 app.post('/reset', (req, res) => {
     accounts.forEach(acc => acc.status = 'FREE');
-    console.log("[POOL] All system account statuses reset to FREE.");
     res.json({ success: true });
 });
 
