@@ -1,10 +1,12 @@
 const http = require('http');
 
-// This is where your phone numbers and passwords live
+// Live login pool from Column 1 of your notebook
 let loginPool = [
-  { id: 1, phone: "26097XXXXX01", password: "Password123", status: "Free" },
-  { id: 2, phone: "26097XXXXX02", password: "Password456", status: "Free" },
-  { id: 3, phone: "26097XXXXX03", password: "Password789", status: "Free" }
+  { id: 1, phone: "0763207608", password: "R0978012009", status: "Free" },
+  { id: 2, phone: "0760017804", password: "R0978012009", status: "Free" },
+  { id: 3, phone: "0760657740", password: "R0978012009", status: "Free" },
+  { id: 4, phone: "0964367610", password: "R0978012009", status: "Free" },
+  { id: 5, phone: "0760027462", password: "R0978012009", status: "Free" }
 ];
 
 const htmlContent = `
@@ -44,13 +46,9 @@ const htmlContent = `
             <div class="live-badge">● ONLINE</div>
         </div>
 
-        <div class="pool-list" id="pool-container">
-            <!-- Dynamic accounts will display here -->
-        </div>
+        <div class="pool-list" id="pool-container"></div>
 
-        <div class="summary-bar" id="summary-text">
-            Loading pool statuses...
-        </div>
+        <div class="summary-bar" id="summary-text">Loading pool statuses...</div>
     </div>
 
     <script>
@@ -58,34 +56,28 @@ const htmlContent = `
             try {
                 const res = await fetch('/pool-state');
                 const data = await res.json();
-                
                 const container = document.getElementById('pool-container');
                 container.innerHTML = '';
-                
                 let freeCount = 0;
                 
                 data.pool.forEach(acc => {
                     if(acc.status === 'Free') freeCount++;
-                    
                     const card = document.createElement('div');
                     card.className = 'account-card';
-                    card.innerHTML = \`
+                    card.innerHTML = `
                         <div class="acc-details">
                             <div class="acc-phone">📱 \${acc.phone}</div>
                             <div class="acc-pass">🔑 Pass: \${acc.password}</div>
                         </div>
                         <div class="status-badge \${acc.status === 'Free' ? 'status-free' : 'status-use'}">
-                            \${acc.status}
+                            \cell \${acc.status}
                         </div>
-                    \`;
+                    `;
                     container.appendChild(card);
                 });
-                
                 document.getElementById('summary-text').innerHTML = 
                     \`Total Configured Accounts: \${data.pool.length} | Available: <span>\${freeCount} Free</span>\`;
-            } catch (e) { 
-                document.getElementById('summary-text').innerText = "Connecting to credentials system..."; 
-            }
+            } catch (e) { document.getElementById('summary-text').innerText = "Connecting to credentials system..."; }
         }
         setInterval(updatePoolDisplay, 2000);
         updatePoolDisplay();
@@ -105,21 +97,18 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Serve the clean credentials interface
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(htmlContent);
     return;
   }
 
-  // API endpoint for dashboard state updates
   if (req.method === 'GET' && req.url === '/pool-state') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ pool: loginPool }));
     return;
   }
 
-  // Script automated endpoint to pull an account
   if (req.method === 'POST' && req.url === '/request-login') {
     const freeAccount = loginPool.find(acc => acc.status === 'Free');
     if (freeAccount) {
