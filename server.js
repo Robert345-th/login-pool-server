@@ -61,23 +61,29 @@ const htmlContent = `
                 let freeCount = 0;
                 
                 data.pool.forEach(acc => {
-                    if(acc.status === 'Free') freeCount++;
+                    if (acc.status === 'Free') freeCount++;
+                    
+                    const badgeClass = acc.status === 'Free' ? 'status-free' : 'status-use';
                     const card = document.createElement('div');
                     card.className = 'account-card';
-                    card.innerHTML = `
-                        <div class="acc-details">
-                            <div class="acc-phone">📱 \${acc.phone}</div>
-                            <div class="acc-pass">🔑 Pass: \${acc.password}</div>
-                        </div>
-                        <div class="status-badge \${acc.status === 'Free' ? 'status-free' : 'status-use'}">
-                            \${acc.status}
-                        </div>
-                    `;
+                    
+                    // Replaced inner backticks with standard concatenation to prevent crashing
+                    card.innerHTML = '<div class="acc-details">' +
+                                     '<div class="acc-phone">📱 ' + acc.phone + '</div>' +
+                                     '<div class="acc-pass">🔑 Pass: ' + acc.password + '</div>' +
+                                     '</div>' +
+                                     '<div class="status-badge ' + badgeClass + '">' +
+                                     acc.status +
+                                     '</div>';
+                                     
                     container.appendChild(card);
                 });
+                
                 document.getElementById('summary-text').innerHTML = 
-                    \`Total Configured Accounts: \${data.pool.length} | Available: <span>\${freeCount} Free</span>\`;
-            } catch (e) { document.getElementById('summary-text').innerText = "Connecting to credentials system..."; }
+                    'Total Configured Accounts: ' + data.pool.length + ' | Available: <span>' + freeCount + ' Free</span>';
+            } catch (e) { 
+                document.getElementById('summary-text').innerText = "Connecting to credentials system..."; 
+            }
         }
         setInterval(updatePoolDisplay, 2000);
         updatePoolDisplay();
