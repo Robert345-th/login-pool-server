@@ -70,7 +70,7 @@ const htmlContent = `
                             <div class="acc-pass">🔑 Pass: \${acc.password}</div>
                         </div>
                         <div class="status-badge \${acc.status === 'Free' ? 'status-free' : 'status-use'}">
-                            \cell \${acc.status}
+                            \${acc.status}
                         </div>
                     `;
                     container.appendChild(card);
