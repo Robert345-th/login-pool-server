@@ -1,10 +1,20 @@
 const express = require('express');
-const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Parse incoming JSON payloads
 app.use(express.json());
+
+// Built-in CORS handling (No npm install required)
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 // --- CENTRAL CREDENTIAL STORAGE POOL ---
 let accounts = [
@@ -154,11 +164,9 @@ app.get('/', (req, res) => {
 
 // --- AUTOMATION LOGIN ENDPOINT ROUTER ---
 app.post('/request-login', (req, res) => {
-    // Find the very first account marked as FREE
     const availableAccount = accounts.find(acc => acc.status === 'FREE');
 
     if (availableAccount) {
-        // Change status to IN-USE immediately to reserve it
         availableAccount.status = 'IN-USE';
         console.log(`[POOL] Account ${availableAccount.phone} assigned successfully.`);
         return res.json({
