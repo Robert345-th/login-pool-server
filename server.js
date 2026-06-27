@@ -1,10 +1,10 @@
 const http = require('http');
 
-// Simple storage for login credentials pool
+// This is where your phone numbers and passwords live
 let loginPool = [
-  { id: 1, phone: "26097XXXXX01", status: "Free" },
-  { id: 2, phone: "26097XXXXX02", status: "Free" },
-  { id: 3, phone: "26097XXXXX03", status: "Free" }
+  { id: 1, phone: "26097XXXXX01", password: "Password123", status: "Free" },
+  { id: 2, phone: "26097XXXXX02", password: "Password456", status: "Free" },
+  { id: 3, phone: "26097XXXXX03", password: "Password789", status: "Free" }
 ];
 
 const htmlContent = `
@@ -13,74 +13,43 @@ const htmlContent = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mwos/Bolabet Withdraw Tracker</title>
+    <title>Login Credentials Pool</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #0b1426; color: white; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .container { width: 100%; max-width: 450px; background: #111c32; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1f2d4a; padding-bottom: 10px; margin-bottom: 15px; }
-        .logo { font-weight: bold; font-size: 18px; color: #fff; }
-        .live-badge { background: #10b981; color: white; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-        .main-payout { background: linear-gradient(135deg, #f59e0b, #d97706); padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 20px; }
-        .main-payout h1 { margin: 0; font-size: 48px; }
-        .main-payout p { margin: 5px 0 0 0; color: #fef3c7; font-size: 14px; }
-        .goal-box { background: rgba(0, 0, 0, 0.2); padding: 15px; border-radius: 10px; margin-top: 15px; text-align: left; }
-        .progress-bar { background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 10px 0; overflow: hidden; }
-        .progress-fill { background: white; width: 33%; height: 100%; }
-        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-        .stat-card { background: #1f2d4a; padding: 15px; border-radius: 10px; text-align: center; }
-        .stat-card div { font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 5px; }
-        .stat-card strong { font-size: 20px; }
-        .pool-box { background: #13223f; border: 1px solid #1f2d4a; padding: 15px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .pool-status { display: flex; gap: 10px; }
-        .badge { padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; }
-        .badge-free { background: rgba(16, 185, 129, 0.2); color: #34d399; }
-        .badge-use { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .btn { padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; text-align: center; font-size: 14px; }
-        .btn-dark { background: #2e3f5f; color: white; }
-        .btn-red { background: #ef4444; color: white; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #0b1426; color: white; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 500px; background: #111c32; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .header { border-bottom: 1px solid #1f2d4a; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-weight: bold; font-size: 20px; color: #fff; letter-spacing: 0.5px; }
+        .subtitle { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+        .live-badge { background: #10b981; color: white; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        .pool-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+        .account-card { background: #1f2d4a; border: 1px solid #2e3f5f; padding: 15px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .acc-details { display: flex; flex-direction: column; gap: 4px; }
+        .acc-phone { font-size: 16px; font-weight: bold; color: #f3f4f6; }
+        .acc-pass { font-size: 13px; color: #94a3b8; font-family: monospace; }
+        .status-badge { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .status-free { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .status-use { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+        .summary-bar { background: #13223f; border: 1px solid #1f2d4a; padding: 12px; border-radius: 10px; text-align: center; font-size: 14px; font-weight: bold; color: #94a3b8; }
+        .summary-bar span { color: #34d399; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">✈️ Mwos/Bolabet<br><span style="font-size:12px;color:#94a3b8;">Withdraw Tracker</span></div>
-            <div class="live-badge">● LIVE</div>
-        </div>
-
-        <div class="main-payout">
-            <h1>300</h1>
-            <p>Zambian Kwacha (ZMW)</p>
-            <div class="goal-box">
-                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:bold;">
-                    <span>🎯 DAILY GOAL</span>
-                    <span>300 / 900 ZMW</span>
-                </div>
-                <div class="progress-bar"><div class="progress-fill"></div></div>
-                <div style="display:flex; justify-content:space-between; font-size:11px; color:#fef3c7;">
-                    <span>33%</span>
-                    <span>600 ZMW remaining</span>
-                </div>
+            <div>
+                <div class="logo">🔑 Login Pool Manager</div>
+                <div class="subtitle">Credentials Storage & Automation Router</div>
             </div>
+            <div class="live-badge">● ONLINE</div>
         </div>
 
-        <div class="stats-grid">
-            <div class="stat-card"><div>Cashouts</div><strong>3</strong></div>
-            <div class="stat-card"><div>Active Tabs</div><strong>26</strong></div>
-            <div class="stat-card"><div>Biggest Win</div><strong>100</strong></div>
+        <div class="pool-list" id="pool-container">
+            <!-- Dynamic accounts will display here -->
         </div>
 
-        <div class="pool-box">
-            <div style="font-weight:bold; font-size:14px;">📱 Real-Time Login<br>Pool Status</div>
-            <div class="pool-status">
-                <span class="badge badge-free" id="free-count">Free: 0</span>
-                <span class="badge badge-use" id="use-count">In-Use: 0</span>
-            </div>
-        </div>
-
-        <div class="btn-row">
-            <button class="btn btn-dark">👁️ View IDs & Numbers</button>
-            <button class="btn btn-red">🔄 Deposit / Clear</button>
+        <div class="summary-bar" id="summary-text">
+            Loading pool statuses...
         </div>
     </div>
 
@@ -89,11 +58,34 @@ const htmlContent = `
             try {
                 const res = await fetch('/pool-state');
                 const data = await res.json();
-                const free = data.pool.filter(a => a.status === 'Free').length;
-                const inUse = data.pool.filter(a => a.status === 'In-Use').length;
-                document.getElementById('free-count').innerText = 'Free: ' + free;
-                document.getElementById('use-count').innerText = 'In-Use: ' + inUse;
-            } catch (e) { console.log("Waiting for backend..."); }
+                
+                const container = document.getElementById('pool-container');
+                container.innerHTML = '';
+                
+                let freeCount = 0;
+                
+                data.pool.forEach(acc => {
+                    if(acc.status === 'Free') freeCount++;
+                    
+                    const card = document.createElement('div');
+                    card.className = 'account-card';
+                    card.innerHTML = \`
+                        <div class="acc-details">
+                            <div class="acc-phone">📱 \${acc.phone}</div>
+                            <div class="acc-pass">🔑 Pass: \${acc.password}</div>
+                        </div>
+                        <div class="status-badge \${acc.status === 'Free' ? 'status-free' : 'status-use'}">
+                            \${acc.status}
+                        </div>
+                    \`;
+                    container.appendChild(card);
+                });
+                
+                document.getElementById('summary-text').innerHTML = 
+                    \`Total Configured Accounts: \${data.pool.length} | Available: <span>\${freeCount} Free</span>\`;
+            } catch (e) { 
+                document.getElementById('summary-text').innerText = "Connecting to credentials system..."; 
+            }
         }
         setInterval(updatePoolDisplay, 2000);
         updatePoolDisplay();
@@ -113,17 +105,31 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Serve Dashboard HTML page on main link
+  // Serve the clean credentials interface
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(htmlContent);
     return;
   }
 
-  // Dashboard endpoint to get pool states
+  // API endpoint for dashboard state updates
   if (req.method === 'GET' && req.url === '/pool-state') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ pool: loginPool }));
+    return;
+  }
+
+  // Script automated endpoint to pull an account
+  if (req.method === 'POST' && req.url === '/request-login') {
+    const freeAccount = loginPool.find(acc => acc.status === 'Free');
+    if (freeAccount) {
+      freeAccount.status = 'In-Use';
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, phone: freeAccount.phone, password: freeAccount.password }));
+    } else {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: "No free accounts available" }));
+    }
     return;
   }
 
