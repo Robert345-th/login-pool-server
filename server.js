@@ -82,7 +82,7 @@ const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
 const UNLOCK_HOUR = 7;
 const UNLOCK_MINUTE = 30;
 const REMOVE_PASSWORD = '1234';
-const HEARTBEAT_TIMEOUT_MS = 3 * 1000;
+const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 let poolLocked = false;
 let poolLockedReason = '';
@@ -99,7 +99,7 @@ setInterval(() => {
     });
 }, 60 * 1000);
 
-// --- HEARTBEAT CHECKER: runs every 2 seconds ---
+// --- HEARTBEAT CHECKER: runs every 10 seconds ---
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -113,7 +113,7 @@ setInterval(() => {
             }
         }
     });
-}, 2 * 1000);
+}, 10 * 1000);
 
 // --- LOCK CHECK ---
 setInterval(() => {
@@ -142,6 +142,13 @@ app.get('/stats', (req, res) => {
         locked: poolLocked,
         reason: poolLockedReason
     });
+});
+
+app.get('/inuse-stats', (req, res) => {
+    const list = accounts
+        .filter(a => a.status === 'IN-USE' && !a.logoutTime)
+        .map(a => ({ phone: a.phone, lastHeartbeat: a.lastHeartbeat }));
+    res.json(list);
 });
 
 app.post('/heartbeat', (req, res) => {
@@ -317,7 +324,6 @@ function listPage(title, subtitle, rows, type) {
     </div>
     <div id="list">${rowsHtml}</div>
 </div>
-
 <div class="pin-overlay" id="pin-modal" style="display:none;">
     <div class="pin-box">
         <div class="pin-title">&#128274; Confirm removal</div>
@@ -330,7 +336,6 @@ function listPage(title, subtitle, rows, type) {
         <div class="pin-err" id="pin-err">Incorrect password</div>
     </div>
 </div>
-
 <script>
     let pendingPhone=null;
     const listType='${type}';
@@ -588,7 +593,109 @@ app.get('/view/free', (req, res) => {
 
 app.get('/view/inuse', (req, res) => {
     const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
-    res.send(listPage('In Use', list.length + ' not yet logged out', list, 'inuse'));
+
+    const rowsHtml = list.length
+        ? list.map((r, i) => `
+            <div class="row" data-phone="${r.phone}">
+                <div class="row-num">${i + 1}.</div>
+                <div class="row-info">
+                    <div class="row-phone">${r.phone}</div>
+                    <div class="row-hb" id="hb-${i}">&#9679; checking...</div>
+                </div>
+            </div>`).join('')
+        : `<div class="empty">No accounts</div>`;
+
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+    <title>In Use</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
+        .page{background:#0d1117;border-radius:16px;width:100%;max-width:520px;margin:0 auto;overflow:hidden}
+        .page-header{padding:16px 20px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:12px}
+        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;text-decoration:none;white-space:nowrap}
+        .back-btn:hover{background:#21262d;color:#e6edf3}
+        .page-title{font-size:15px;font-weight:500;color:#e6edf3}
+        .page-subtitle{font-size:11px;color:#4b5563;margin-top:2px}
+        .search-wrap{padding:14px 20px;border-bottom:1px solid #21262d}
+        .search-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
+        .search-input:focus{border-color:#58a6ff}
+        .search-input::placeholder{color:#4b5563}
+        .row{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid #161b22;gap:10px}
+        .row:last-child{border-bottom:none}
+        .row-num{font-size:12px;color:#4b5563;width:26px;flex-shrink:0}
+        .row-info{flex:1;min-width:0}
+        .row-phone{font-size:14px;color:#e6edf3;font-weight:500}
+        .row-hb{font-size:11px;margin-top:3px}
+        .hb-alive{color:#3fb950}
+        .hb-warning{color:#fbbf24}
+        .hb-dead{color:#f87171}
+        .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
+        .hidden{display:none}
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="page-header">
+        <a href="/" class="back-btn">&#8592; Back</a>
+        <div>
+            <div class="page-title">In Use</div>
+            <div class="page-subtitle">${list.length} not yet logged out</div>
+        </div>
+    </div>
+    <div class="search-wrap">
+        <input class="search-input" id="search" placeholder="&#128269; Search phone number..." oninput="filterRows(this.value)">
+    </div>
+    <div id="list">${rowsHtml}</div>
+</div>
+<script>
+    function pad(n){return String(n).padStart(2,'0')}
+
+    function updateHeartbeats(){
+        fetch('/inuse-stats')
+        .then(r=>r.json())
+        .then(data=>{
+            data.forEach((acc,i)=>{
+                const el=document.getElementById('hb-'+i);
+                if(!el) return;
+                if(!acc.lastHeartbeat){
+                    el.className='row-hb hb-warning';
+                    el.textContent='⚡ Waiting for first heartbeat...';
+                    return;
+                }
+                const elapsed=Date.now()-acc.lastHeartbeat;
+                const s=Math.floor(elapsed/1000);
+                if(elapsed<5000){
+                    el.className='row-hb hb-alive';
+                    el.textContent='● Heartbeat OK — '+s+'s ago';
+                } else if(elapsed<30000){
+                    el.className='row-hb hb-warning';
+                    el.textContent='◐ Heartbeat slow — '+s+'s ago';
+                } else {
+                    el.className='row-hb hb-dead';
+                    el.textContent='✕ No heartbeat — '+s+'s ago';
+                }
+            });
+        })
+        .catch(()=>{});
+    }
+
+    function filterRows(q){
+        const rows=document.querySelectorAll('.row');
+        const query=q.trim().toLowerCase();
+        rows.forEach(row=>{
+            const phone=row.getAttribute('data-phone')||'';
+            row.classList.toggle('hidden',query!==''&&!phone.toLowerCase().includes(query));
+        });
+    }
+
+    setInterval(updateHeartbeats,1000);
+    updateHeartbeats();
+</script>
+</body>
+</html>`);
 });
 
 app.get('/view/waiting', (req, res) => {
@@ -604,16 +711,6 @@ app.get('/view/waiting', (req, res) => {
 
 app.get('/view/bad', (req, res) => {
     res.send(listPage('Bad Password', badPasswordAccounts.length + ' accounts with wrong password', badPasswordAccounts, 'bad'));
-});
-
-app.post('/heartbeat', (req, res) => {
-    const { phone } = req.body;
-    const account = accounts.find(a => a.phone === phone);
-    if (account && account.status === 'IN-USE') {
-        account.lastHeartbeat = Date.now();
-        return res.json({ success: true });
-    }
-    res.json({ success: false, error: 'Account not found or not in use.' });
 });
 
 app.post('/wrong-password', (req, res) => {
