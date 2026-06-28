@@ -4,7 +4,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Built-in CORS headers configuration
+// Allow CORS
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
@@ -15,14 +15,14 @@ app.use((req, res, next) => {
     next();
 });
 
-// --- CENTRAL CREDENTIAL STORAGE POOL ---
+// --- ACCOUNT POOL ---
 let accounts = [
     { phone: "0763207608", password: "R0978012009", status: "FREE" },
     { phone: "0760017804", password: "R0978012009", status: "FREE" },
-    // ... keep the rest of your accounts here ...
+    // add more accounts here...
 ];
 
-// --- DASHBOARD UI HTML ---
+// --- DASHBOARD ---
 app.get('/', (req, res) => {
     const totalAccounts = accounts.length;
     const freeAccounts = accounts.filter(acc => acc.status === 'FREE').length;
@@ -44,7 +44,7 @@ app.get('/', (req, res) => {
         </div>
     `).join('');
 
-    let html = `
+    res.send(`
     <!DOCTYPE html>
     <html>
     <head>
@@ -82,8 +82,7 @@ app.get('/', (req, res) => {
         </script>
     </body>
     </html>
-    `;
-    res.send(html);
+    `);
 });
 
 // --- API ENDPOINTS ---
@@ -92,16 +91,20 @@ app.post('/request-login', (req, res) => {
     const availableAccount = accounts.find(acc => acc.status === 'FREE');
     if (availableAccount) {
         availableAccount.status = 'IN-USE';
-        return res.json({ success: true, phone: availableAccount.phone, password: availableAccount.password });
+        return res.json({
+            success: true,
+            phone: availableAccount.phone,
+            password: availableAccount.password,
+            message: `Account ${availableAccount.phone} allocated and marked IN-USE.`
+        });
     }
     return res.json({ success: false, error: "No free accounts available" });
 });
 
-// Explicit login instruction
+// Explicit login
 app.post('/login', (req, res) => {
     const { phone } = req.body;
     const account = accounts.find(acc => acc.phone === phone);
-
     if (account && account.status === 'FREE') {
         account.status = 'IN-USE';
         return res.json({ success: true, message: `Account ${phone} marked as logged in.` });
@@ -109,11 +112,10 @@ app.post('/login', (req, res) => {
     return res.json({ success: false, error: "Account not available or already in use." });
 });
 
-// Explicit logout instruction
+// Explicit logout
 app.post('/logout', (req, res) => {
     const { phone } = req.body;
     const account = accounts.find(acc => acc.phone === phone);
-
     if (account && account.status === 'IN-USE') {
         account.status = 'FREE';
         return res.json({ success: true, message: `Account ${phone} released back to FREE.` });
@@ -121,19 +123,18 @@ app.post('/logout', (req, res) => {
     return res.json({ success: false, error: "Account not found or not in use." });
 });
 
-// Aviator lock instruction
+// Aviator lock
 app.post('/aviator-lock', (req, res) => {
     const { phone } = req.body;
     const account = accounts.find(acc => acc.phone === phone);
-
     if (account) {
         account.status = 'LOCKED';
-        return res.json({ success: true, message: `Account ${phone} locked in Aviator. No further actions allowed.` });
+        return res.json({ success: true, message: `Account ${phone} locked in Aviator.` });
     }
     return res.json({ success: false, error: "Account not found." });
 });
 
-// Reset all accounts back to FREE
+// Reset all accounts
 app.post('/reset', (req, res) => {
     accounts.forEach(acc => acc.status = 'FREE');
     res.json({ success: true });
