@@ -50,7 +50,6 @@ setInterval(() => {
     const isAfterUnlock = (hour > UNLOCK_HOUR) || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE);
     const isLockWindow = isAfterLock || !isAfterUnlock;
 
-    // Auto-unlock at 07:30
     if (poolLocked && isAfterUnlock && !isAfterLock) {
         poolLocked = false;
         poolLockedReason = '';
@@ -58,7 +57,6 @@ setInterval(() => {
         return;
     }
 
-    // Lock at 18:00 regardless of account count
     if (!poolLocked && isLockWindow) {
         poolLocked = true;
         poolLockedReason = 'Daily lock active (18:00 — 07:30). Unlocks at 07:30.';
@@ -66,7 +64,6 @@ setInterval(() => {
         return;
     }
 
-    // Lock if free accounts hit exactly 50
     if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
         poolLocked = true;
         poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
@@ -81,6 +78,10 @@ app.get('/', (req, res) => {
     const freeAccounts = accounts.filter(a => a.status === 'FREE');
     const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
     const waitingAccounts = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime);
+
+    const freePhones = JSON.stringify(freeAccounts.map(a => a.phone));
+    const inUsePhones = JSON.stringify(inUseAccounts.map(a => a.phone));
+    const waitingPhones = JSON.stringify(waitingAccounts.map(a => a.phone + ' — out at ' + (a.logoutTimeStr || 'N/A')));
 
     res.send(`<!DOCTYPE html>
 <html>
@@ -131,6 +132,19 @@ app.get('/', (req, res) => {
         .footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
         .tick{font-size:11px;color:#3fb950;font-family:monospace;opacity:0.7}
         .hint{font-size:10px;color:#252b35}
+        .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+        .modal{background:#0d1117;border:1.5px solid #21262d;border-radius:16px;width:100%;max-width:360px;max-height:80vh;display:flex;flex-direction:column}
+        .modal-header{padding:18px 20px 14px;border-bottom:1px solid #21262d;display:flex;justify-content:space-between;align-items:flex-start}
+        .modal-title{font-size:15px;font-weight:500;color:#e6edf3}
+        .modal-subtitle{font-size:11px;color:#4b5563;margin-top:3px}
+        .modal-close{background:none;border:none;color:#4b5563;font-size:22px;cursor:pointer;line-height:1}
+        .modal-close:hover{color:#e6edf3}
+        .modal-body{overflow-y:auto;padding:8px 0}
+        .modal-row{display:flex;align-items:center;padding:11px 20px;border-bottom:1px solid #161b22}
+        .modal-row:last-child{border-bottom:none}
+        .modal-idx{font-size:12px;color:#4b5563;width:28px;flex-shrink:0}
+        .modal-phone{font-size:14px;color:#e6edf3;font-weight:500}
+        .modal-empty{padding:24px 20px;text-align:center;color:#4b5563;font-size:13px}
         @media(max-width:500px){.three-boxes{grid-template-columns:1fr}.box-num{font-size:48px}}
     </style>
 </head>
@@ -158,7 +172,7 @@ app.get('/', (req, res) => {
             ` : `
                 <div class="box-desc desc-free">Accounts ready</div>
             `}
-            <button class="view-btn" onclick="alert('Free accounts:\\n\\n${freeAccounts.map(a => a.phone).join('\\n') || 'None'}')">View</button>
+            <button class="view-btn" onclick="openModal('Free Accounts', '${freeAccounts.length} accounts ready', ${freePhones})">View</button>
             <div class="${poolLocked ? 'acc-count-locked' : 'acc-count'}">${freeAccounts.length}</div>
         </div>
 
@@ -166,7 +180,7 @@ app.get('/', (req, res) => {
             <div class="box-label inuse-col">&#9654; In use</div>
             <div class="box-num num-inuse">${inUseAccounts.length}</div>
             <div class="box-desc desc-inuse">Not yet logged out</div>
-            <button class="view-btn" onclick="alert('In use:\\n\\n${inUseAccounts.map(a => a.phone).join('\\n') || 'None'}')">View</button>
+            <button class="view-btn" onclick="openModal('In Use', '${inUseAccounts.length} not yet logged out', ${inUsePhones})">View</button>
             <div class="acc-count">${inUseAccounts.length}</div>
         </div>
 
@@ -174,7 +188,7 @@ app.get('/', (req, res) => {
             <div class="box-label waiting-col">&#9203; Waiting 24h</div>
             <div class="box-num num-waiting">${waitingAccounts.length}</div>
             <div class="box-desc desc-waiting">Full account</div>
-            <button class="view-btn" onclick="alert('Waiting 24h:\\n\\n${waitingAccounts.map(a => a.phone + ' — out at ' + (a.logoutTimeStr || 'N/A')).join('\\n') || 'None'}')">View</button>
+            <button class="view-btn" onclick="openModal('Waiting 24h', '${waitingAccounts.length} full accounts', ${waitingPhones})">View</button>
             <div class="acc-count">${waitingAccounts.length}</div>
         </div>
 
@@ -191,8 +205,37 @@ app.get('/', (req, res) => {
         <span class="hint">Auto-refresh: 1ms</span>
     </div>
 </div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal" style="display:none;" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="modal-title"></div>
+                <div class="modal-subtitle" id="modal-subtitle"></div>
+            </div>
+            <button class="modal-close" onclick="closeModal()">&#215;</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+    </div>
+</div>
+
 <script>
     function pad(n){return String(n).padStart(2,'0')}
+
+    function openModal(title, subtitle, phones){
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-subtitle').textContent = subtitle;
+        document.getElementById('modal-body').innerHTML = phones.length
+            ? phones.map((p,i) => '<div class="modal-row"><div class="modal-idx">'+(i+1)+'.</div><div class="modal-phone">'+p+'</div></div>').join('')
+            : '<div class="modal-empty">No accounts</div>';
+        document.getElementById('modal').style.display='flex';
+    }
+
+    function closeModal(){
+        document.getElementById('modal').style.display='none';
+    }
+
     function update(){
         const now = new Date();
         document.getElementById('tick').textContent = pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
@@ -208,6 +251,7 @@ app.get('/', (req, res) => {
             cd.textContent=h+'h '+pad(m)+'m '+pad(s)+'s';
         }
     }
+
     setInterval(update,1);
     update();
     setInterval(()=>location.reload(),5000);
