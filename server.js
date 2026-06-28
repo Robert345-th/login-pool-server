@@ -106,29 +106,19 @@ setInterval(() => {
     const isAfterLock = (hour > LOCK_HOUR) || (hour === LOCK_HOUR && minute >= LOCK_MINUTE);
     const isAfterUnlock = (hour > UNLOCK_HOUR) || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE);
     const isLockWindow = isAfterLock || !isAfterUnlock;
-
-    if (poolLocked && isAfterUnlock && !isAfterLock) {
-        poolLocked = false;
-        poolLockedReason = '';
-        return;
-    }
-    if (!poolLocked && isLockWindow) {
-        poolLocked = true;
-        poolLockedReason = 'Daily lock active (18:00 — 07:30). Unlocks at 07:30.';
-        return;
-    }
-    if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
-        poolLocked = true;
-        poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
-    }
+    if (poolLocked && isAfterUnlock && !isAfterLock) { poolLocked = false; poolLockedReason = ''; return; }
+    if (!poolLocked && isLockWindow) { poolLocked = true; poolLockedReason = 'Daily lock active (18:00 — 07:30). Unlocks at 07:30.'; return; }
+    if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) { poolLocked = true; poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`; }
 }, 10 * 1000);
 
-function listPage(title, subtitle, rows) {
+function listPage(title, subtitle, rows, showDelete = false) {
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
-            <div style="display:flex;align-items:center;padding:14px 24px;border-bottom:1px solid #161b22;">
-                <div style="font-size:13px;color:#4b5563;width:32px;flex-shrink:0;">${i + 1}.</div>
-                <div style="font-size:15px;color:#e6edf3;font-weight:500;">${r}</div>
+            <div style="display:flex;align-items:center;padding:14px 24px;border-bottom:1px solid #161b22;gap:12px;">
+                <div style="font-size:13px;color:#4b5563;width:28px;flex-shrink:0;">${i + 1}.</div>
+                <div style="font-size:15px;color:#e6edf3;font-weight:500;flex:1;">${r.phone}</div>
+                <div style="font-size:12px;color:#4b5563;">${r.password}</div>
+                ${showDelete ? `<button onclick="removeAccount('${r.phone}')" style="background:#2d0a0a;border:1px solid #7f1d1d;color:#f87171;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;">Remove</button>` : ''}
             </div>`).join('')
         : `<div style="padding:40px 24px;text-align:center;color:#4b5563;font-size:13px;">No accounts</div>`;
 
@@ -140,7 +130,7 @@ function listPage(title, subtitle, rows) {
     <style>
         *{box-sizing:border-box;margin:0;padding:0}
         body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
-        .page{background:#0d1117;border-radius:16px;width:100%;max-width:480px;margin:0 auto;overflow:hidden}
+        .page{background:#0d1117;border-radius:16px;width:100%;max-width:520px;margin:0 auto;overflow:hidden}
         .page-header{padding:20px 24px 16px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:14px}
         .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}
         .back-btn:hover{background:#21262d;color:#e6edf3}
@@ -159,6 +149,19 @@ function listPage(title, subtitle, rows) {
     </div>
     ${rowsHtml}
 </div>
+<script>
+    function removeAccount(phone){
+        if(!confirm('Remove account ' + phone + '?')) return;
+        fetch('/remove-account', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({phone})
+        }).then(r => r.json()).then(d => {
+            if(d.success) location.reload();
+            else alert('Error: ' + d.error);
+        });
+    }
+</script>
 </body>
 </html>`;
 }
@@ -211,11 +214,22 @@ app.get('/', (req, res) => {
         .view-btn:hover{background:#a05213}
         .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 9px;font-size:12px;font-weight:700}
         .divider{height:1px;background:#1a1f2a;margin-bottom:20px}
+        .add-box{background:#0d1117;border:1.5px solid #21262d;border-radius:14px;padding:20px 24px;margin-bottom:20px}
+        .add-title{font-size:13px;font-weight:500;color:#8b949e;margin-bottom:14px;letter-spacing:0.5px;text-transform:uppercase}
+        .add-row{display:flex;gap:10px;flex-wrap:wrap}
+        .add-input{flex:1;min-width:120px;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
+        .add-input:focus{border-color:#58a6ff}
+        .add-input::placeholder{color:#4b5563}
+        .add-btn{background:#1a3a6e;border:none;color:#a8d0ff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+        .add-btn:hover{background:#1f4480}
         .reset-btn{width:100%;background:#130a0a;border:1.5px solid #3d1515;color:#f85149;padding:13px;border-radius:12px;font-size:13px;font-weight:500;cursor:pointer}
         .reset-btn:hover{background:#1f0e0e}
         .footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
         .tick{font-size:11px;color:#3fb950;font-family:monospace;opacity:0.7}
         .hint{font-size:10px;color:#252b35}
+        .msg{font-size:12px;margin-top:10px;padding:8px 12px;border-radius:6px;display:none}
+        .msg-ok{background:#0d4429;color:#3fb950}
+        .msg-err{background:#4b1111;color:#f87171}
         @media(max-width:500px){.three-boxes{grid-template-columns:1fr}.box-num{font-size:48px}}
     </style>
 </head>
@@ -230,7 +244,6 @@ app.get('/', (req, res) => {
     </div>
 
     <div class="three-boxes">
-
         <div class="box ${poolLocked ? 'box-free-locked' : 'box-free'}">
             <div class="box-label ${poolLocked ? 'free-locked-col' : 'free-col'}">
                 ${poolLocked ? '&#128274; Free — Locked' : '&#10003; Free'}
@@ -243,21 +256,28 @@ app.get('/', (req, res) => {
             ` : `<div class="box-desc desc-free">Accounts ready</div>`}
             <a href="/view/free" class="view-btn">View <span class="view-count">${freeAccounts.length}</span></a>
         </div>
-
         <div class="box box-inuse">
             <div class="box-label inuse-col">&#9654; In use</div>
             <div class="box-num num-inuse">${inUseAccounts.length}</div>
             <div class="box-desc desc-inuse">Not yet logged out</div>
             <a href="/view/inuse" class="view-btn">View <span class="view-count">${inUseAccounts.length}</span></a>
         </div>
-
         <div class="box box-waiting">
             <div class="box-label waiting-col">&#9203; Waiting 24h</div>
             <div class="box-num num-waiting">${waitingAccounts.length}</div>
             <div class="box-desc desc-waiting">Full account</div>
             <a href="/view/waiting" class="view-btn">View <span class="view-count">${waitingAccounts.length}</span></a>
         </div>
+    </div>
 
+    <div class="add-box">
+        <div class="add-title">&#43; Add account</div>
+        <div class="add-row">
+            <input class="add-input" id="inp-phone" placeholder="Phone number" type="text">
+            <input class="add-input" id="inp-pass" placeholder="Password" type="text">
+            <button class="add-btn" onclick="addAccount()">Add</button>
+        </div>
+        <div class="msg" id="add-msg"></div>
     </div>
 
     <div class="divider"></div>
@@ -269,6 +289,7 @@ app.get('/', (req, res) => {
         <span class="hint">Auto-refresh: 1ms</span>
     </div>
 </div>
+
 <script>
     function pad(n){return String(n).padStart(2,'0')}
     function update(){
@@ -276,18 +297,39 @@ app.get('/', (req, res) => {
         document.getElementById('tick').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
         const cd=document.getElementById('unlock-countdown');
         if(cd){
-            const unlock=new Date();
-            unlock.setHours(7,30,0,0);
+            const unlock=new Date(); unlock.setHours(7,30,0,0);
             if(unlock<=now) unlock.setDate(unlock.getDate()+1);
             const diff=unlock-now;
-            const h=Math.floor(diff/3600000);
-            const m=Math.floor((diff%3600000)/60000);
-            const s=Math.floor((diff%60000)/1000);
-            cd.textContent=h+'h '+pad(m)+'m '+pad(s)+'s';
+            cd.textContent=Math.floor(diff/3600000)+'h '+pad(Math.floor((diff%3600000)/60000))+'m '+pad(Math.floor((diff%60000)/1000))+'s';
         }
     }
-    setInterval(update,1);
-    update();
+    function showMsg(text, ok){
+        const el=document.getElementById('add-msg');
+        el.textContent=text;
+        el.className='msg '+(ok?'msg-ok':'msg-err');
+        el.style.display='block';
+        setTimeout(()=>el.style.display='none', 3000);
+    }
+    function addAccount(){
+        const phone=document.getElementById('inp-phone').value.trim();
+        const password=document.getElementById('inp-pass').value.trim();
+        if(!phone||!password){ showMsg('Phone and password required', false); return; }
+        fetch('/add-account',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({phone,password})
+        }).then(r=>r.json()).then(d=>{
+            if(d.success){
+                showMsg('Account '+phone+' added!', true);
+                document.getElementById('inp-phone').value='';
+                document.getElementById('inp-pass').value='';
+                setTimeout(()=>location.reload(), 1000);
+            } else {
+                showMsg(d.error, false);
+            }
+        });
+    }
+    setInterval(update,1); update();
     setInterval(()=>location.reload(),5000);
 </script>
 </body>
@@ -295,25 +337,40 @@ app.get('/', (req, res) => {
 });
 
 app.get('/view/free', (req, res) => {
-    const list = accounts.filter(a => a.status === 'FREE').map(a => a.phone);
-    res.send(listPage('Free Accounts', list.length + ' accounts ready', list));
+    const list = accounts.filter(a => a.status === 'FREE');
+    res.send(listPage('Free Accounts', list.length + ' accounts ready', list, true));
 });
 
 app.get('/view/inuse', (req, res) => {
-    const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime).map(a => a.phone);
-    res.send(listPage('In Use', list.length + ' not yet logged out', list));
+    const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
+    res.send(listPage('In Use', list.length + ' not yet logged out', list, true));
 });
 
 app.get('/view/waiting', (req, res) => {
-    const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
-        .map(a => a.phone + '  —  out at ' + (a.logoutTimeStr || 'N/A'));
-    res.send(listPage('Waiting 24h', list.length + ' full accounts', list));
+    const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime);
+    res.send(listPage('Waiting 24h', list.length + ' full accounts', list, true));
+});
+
+app.post('/add-account', (req, res) => {
+    const { phone, password } = req.body;
+    if (!phone || !password) return res.json({ success: false, error: 'Phone and password required.' });
+    if (accounts.find(a => a.phone === phone)) return res.json({ success: false, error: 'Account already exists.' });
+    accounts.push({ phone, password, status: 'FREE', logoutTime: null, logoutTimeStr: null });
+    console.log(`Account added: ${phone}`);
+    res.json({ success: true });
+});
+
+app.post('/remove-account', (req, res) => {
+    const { phone } = req.body;
+    const index = accounts.findIndex(a => a.phone === phone);
+    if (index === -1) return res.json({ success: false, error: 'Account not found.' });
+    accounts.splice(index, 1);
+    console.log(`Account removed: ${phone}`);
+    res.json({ success: true });
 });
 
 app.post('/request-login', (req, res) => {
-    if (poolLocked) {
-        return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
-    }
+    if (poolLocked) return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
     const availableAccount = accounts.find(acc => acc.status === 'FREE');
     if (availableAccount) {
         availableAccount.status = 'IN-USE';
