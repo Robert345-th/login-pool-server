@@ -81,6 +81,7 @@ const LOCK_HOUR = 18;
 const LOCK_MINUTE = 0;
 const UNLOCK_HOUR = 7;
 const UNLOCK_MINUTE = 30;
+const REMOVE_PASSWORD = '1234';
 
 let poolLocked = false;
 let poolLockedReason = '';
@@ -91,9 +92,7 @@ setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
         if (acc.status === 'IN-USE' && acc.logoutTime && (now - acc.logoutTime >= TWENTY_FOUR_HOURS_MS)) {
-            acc.status = 'FREE';
-            acc.logoutTime = null;
-            acc.logoutTimeStr = null;
+            acc.status = 'FREE'; acc.logoutTime = null; acc.logoutTimeStr = null;
         }
     });
 }, 60 * 1000);
@@ -111,7 +110,6 @@ setInterval(() => {
     if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) { poolLocked = true; poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`; }
 }, 10 * 1000);
 
-// --- STATS ENDPOINT ---
 app.get('/stats', (req, res) => {
     res.json({
         free: accounts.filter(a => a.status === 'FREE').length,
@@ -125,13 +123,13 @@ app.get('/stats', (req, res) => {
 function listPage(title, subtitle, rows) {
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
-            <div style="display:flex;align-items:center;padding:14px 24px;border-bottom:1px solid #161b22;gap:12px;">
-                <div style="font-size:13px;color:#4b5563;width:28px;flex-shrink:0;">${i + 1}.</div>
-                <div style="font-size:15px;color:#e6edf3;font-weight:500;flex:1;">${r.phone}</div>
-                <div style="font-size:12px;color:#4b5563;margin-right:8px;">${r.password}</div>
-                <button onclick="removeAccount('${r.phone}')" style="background:#2d0a0a;border:1px solid #7f1d1d;color:#f87171;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;">Remove</button>
+            <div class="row" data-phone="${r.phone}">
+                <div class="row-num">${i + 1}.</div>
+                <div class="row-phone">${r.display || r.phone}</div>
+                <div class="row-pass">${r.password || ''}</div>
+                <button class="rm-btn" onclick="removeAccount('${r.phone}')">Remove</button>
             </div>`).join('')
-        : `<div style="padding:40px 24px;text-align:center;color:#4b5563;font-size:13px;">No accounts</div>`;
+        : `<div class="empty">No accounts</div>`;
 
     return `<!DOCTYPE html>
 <html>
@@ -142,11 +140,37 @@ function listPage(title, subtitle, rows) {
         *{box-sizing:border-box;margin:0;padding:0}
         body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
         .page{background:#0d1117;border-radius:16px;width:100%;max-width:520px;margin:0 auto;overflow:hidden}
-        .page-header{padding:20px 24px 16px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:14px}
-        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}
+        .page-header{padding:16px 20px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:12px}
+        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;text-decoration:none;white-space:nowrap}
         .back-btn:hover{background:#21262d;color:#e6edf3}
-        .page-title{font-size:16px;font-weight:500;color:#e6edf3}
-        .page-subtitle{font-size:11px;color:#4b5563;margin-top:3px}
+        .page-title{font-size:15px;font-weight:500;color:#e6edf3}
+        .page-subtitle{font-size:11px;color:#4b5563;margin-top:2px}
+        .search-wrap{padding:14px 20px;border-bottom:1px solid #21262d}
+        .search-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
+        .search-input:focus{border-color:#58a6ff}
+        .search-input::placeholder{color:#4b5563}
+        .row{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid #161b22;gap:10px}
+        .row:last-child{border-bottom:none}
+        .row-num{font-size:12px;color:#4b5563;width:26px;flex-shrink:0}
+        .row-phone{font-size:14px;color:#e6edf3;font-weight:500;flex:1}
+        .row-pass{font-size:11px;color:#4b5563;margin-right:4px}
+        .rm-btn{background:#2d0a0a;border:1px solid #7f1d1d;color:#f87171;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0}
+        .rm-btn:hover{background:#3d1010}
+        .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
+        .hidden{display:none}
+
+        /* PIN MODAL */
+        .pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+        .pin-box{background:#0d1117;border:1.5px solid #21262d;border-radius:16px;padding:28px 24px;width:100%;max-width:320px;text-align:center}
+        .pin-title{font-size:15px;font-weight:500;color:#e6edf3;margin-bottom:6px}
+        .pin-sub{font-size:12px;color:#4b5563;margin-bottom:20px}
+        .pin-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:12px;border-radius:8px;font-size:16px;outline:none;text-align:center;letter-spacing:4px;margin-bottom:14px}
+        .pin-input:focus{border-color:#58a6ff}
+        .pin-row{display:flex;gap:10px}
+        .pin-cancel{flex:1;background:#161b22;border:1px solid #30363d;color:#8b949e;padding:10px;border-radius:8px;font-size:13px;cursor:pointer}
+        .pin-confirm{flex:1;background:#7f1d1d;border:none;color:#f87171;padding:10px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
+        .pin-confirm:hover{background:#991f1f}
+        .pin-err{color:#f87171;font-size:12px;margin-top:10px;display:none}
     </style>
 </head>
 <body>
@@ -155,21 +179,81 @@ function listPage(title, subtitle, rows) {
         <a href="/" class="back-btn">&#8592; Back</a>
         <div>
             <div class="page-title">${title}</div>
-            <div class="page-subtitle" id="sub">${subtitle}</div>
+            <div class="page-subtitle">${subtitle}</div>
         </div>
+    </div>
+    <div class="search-wrap">
+        <input class="search-input" id="search" placeholder="&#128269; Search phone number..." oninput="filterRows(this.value)">
     </div>
     <div id="list">${rowsHtml}</div>
 </div>
+
+<!-- PIN MODAL -->
+<div class="pin-overlay" id="pin-modal" style="display:none;">
+    <div class="pin-box">
+        <div class="pin-title">&#128274; Confirm removal</div>
+        <div class="pin-sub">Enter password to remove this account</div>
+        <input class="pin-input" id="pin-input" type="password" maxlength="10" placeholder="••••">
+        <div class="pin-row">
+            <button class="pin-cancel" onclick="closePin()">Cancel</button>
+            <button class="pin-confirm" onclick="confirmRemove()">Remove</button>
+        </div>
+        <div class="pin-err" id="pin-err">Incorrect password</div>
+    </div>
+</div>
+
 <script>
+    let pendingPhone = null;
+
     function removeAccount(phone){
-        if(!confirm('Remove account ' + phone + '?')) return;
+        pendingPhone = phone;
+        document.getElementById('pin-input').value='';
+        document.getElementById('pin-err').style.display='none';
+        document.getElementById('pin-modal').style.display='flex';
+        setTimeout(()=>document.getElementById('pin-input').focus(),100);
+    }
+
+    function closePin(){
+        pendingPhone = null;
+        document.getElementById('pin-modal').style.display='none';
+    }
+
+    function confirmRemove(){
+        const pin = document.getElementById('pin-input').value.trim();
+        if(pin !== '1234'){
+            document.getElementById('pin-err').style.display='block';
+            document.getElementById('pin-input').value='';
+            return;
+        }
         fetch('/remove-account',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({phone})
+            body:JSON.stringify({phone: pendingPhone, pin})
         }).then(r=>r.json()).then(d=>{
-            if(d.success) location.reload();
-            else alert('Error: '+d.error);
+            if(d.success){
+                closePin();
+                // remove row from DOM without reloading
+                const row = document.querySelector('[data-phone="'+pendingPhone+'"]');
+                if(row) row.remove();
+            } else {
+                document.getElementById('pin-err').textContent = d.error || 'Error';
+                document.getElementById('pin-err').style.display='block';
+            }
+        });
+    }
+
+    // Allow pressing Enter in pin input
+    document.getElementById('pin-input').addEventListener('keydown', e => {
+        if(e.key === 'Enter') confirmRemove();
+        if(e.key === 'Escape') closePin();
+    });
+
+    function filterRows(q){
+        const rows = document.querySelectorAll('.row');
+        const query = q.trim().toLowerCase();
+        rows.forEach(row => {
+            const phone = row.getAttribute('data-phone') || '';
+            row.classList.toggle('hidden', query !== '' && !phone.toLowerCase().includes(query));
         });
     }
 </script>
@@ -201,22 +285,18 @@ app.get('/', (req, res) => {
         .three-boxes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px}
         .box{border-radius:16px;padding:22px 18px 18px;display:flex;flex-direction:column;min-width:0}
         .box-free{background:#0a1a0f;border:1.5px solid #1a4a27}
-        .box-free-locked{background:#1a0a0a;border:1.5px solid #7f1d1d}
         .box-inuse{background:#080f1f;border:1.5px solid #1a2f55}
         .box-waiting{background:#120c22;border:1.5px solid #2e1f55}
         .box-label{font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
         .free-col{color:#3fb950}
-        .free-locked-col{color:#f87171}
         .inuse-col{color:#58a6ff}
         .waiting-col{color:#c4b5fd}
         .box-num{font-size:64px;font-weight:500;line-height:1;letter-spacing:-3px;margin-bottom:8px}
         .num-free{color:#3fb950}
-        .num-free-locked{color:#f87171}
         .num-inuse{color:#58a6ff}
         .num-waiting{color:#c4b5fd}
         .box-desc{font-size:11px;margin-bottom:16px;flex:1;line-height:1.4}
         .desc-free{color:#2a6e3a}
-        .desc-free-locked{color:#7f2020}
         .desc-inuse{color:#1e4a7a}
         .desc-waiting{color:#4a3080}
         .unlock-timer{font-size:17px;font-weight:500;color:#fff;margin-bottom:3px}
@@ -255,24 +335,22 @@ app.get('/', (req, res) => {
     </div>
 
     <div class="three-boxes">
-        <div class="box" id="free-box" style="${poolLocked ? 'background:#1a0a0a;border:1.5px solid #7f1d1d;' : 'background:#0a1a0f;border:1.5px solid #1a4a27;'}border-radius:16px;padding:22px 18px 18px;display:flex;flex-direction:column;min-width:0;">
-            <div class="box-label" id="free-label" style="color:${poolLocked ? '#f87171' : '#3fb950'}">${poolLocked ? '&#128274; Free — Locked' : '&#10003; Free'}</div>
-            <div class="box-num" id="num-free" style="color:${poolLocked ? '#f87171' : '#3fb950'};font-size:64px;font-weight:500;line-height:1;letter-spacing:-3px;margin-bottom:8px;">${freeAccounts.length}</div>
-            <div class="box-desc" id="free-desc" style="color:${poolLocked ? '#7f2020' : '#2a6e3a'};font-size:11px;margin-bottom:16px;flex:1;">${poolLocked ? poolLockedReason : 'Accounts ready'}</div>
-            <div id="unlock-block" style="display:${poolLocked ? 'block' : 'none'};">
+        <div class="box box-free" id="free-box">
+            <div class="box-label free-col" id="free-label">&#10003; Free</div>
+            <div class="box-num num-free" id="num-free">${freeAccounts.length}</div>
+            <div class="box-desc desc-free" id="free-desc">Accounts ready</div>
+            <div id="unlock-block" style="display:none;">
                 <div class="unlock-timer" id="unlock-countdown">--:--:--</div>
                 <div class="unlock-sub">Unlocks at 07:30</div>
             </div>
             <a href="/view/free" class="view-btn">View <span class="view-count" id="cnt-free">${freeAccounts.length}</span></a>
         </div>
-
         <div class="box box-inuse">
             <div class="box-label inuse-col">&#9654; In use</div>
             <div class="box-num num-inuse" id="num-inuse">${inUseAccounts.length}</div>
             <div class="box-desc desc-inuse">Not yet logged out</div>
             <a href="/view/inuse" class="view-btn">View <span class="view-count" id="cnt-inuse">${inUseAccounts.length}</span></a>
         </div>
-
         <div class="box box-waiting">
             <div class="box-label waiting-col">&#9203; Waiting 24h</div>
             <div class="box-num num-waiting" id="num-waiting">${waitingAccounts.length}</div>
@@ -308,7 +386,7 @@ app.get('/', (req, res) => {
         const now=new Date();
         document.getElementById('tick').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
         const cd=document.getElementById('unlock-countdown');
-        if(cd){
+        if(cd && cd.parentElement.style.display!=='none'){
             const unlock=new Date(); unlock.setHours(7,30,0,0);
             if(unlock<=now) unlock.setDate(unlock.getDate()+1);
             const diff=unlock-now;
@@ -317,9 +395,7 @@ app.get('/', (req, res) => {
     }
 
     function refreshStats(){
-        fetch('/stats')
-        .then(r=>r.json())
-        .then(d=>{
+        fetch('/stats').then(r=>r.json()).then(d=>{
             document.getElementById('num-free').textContent=d.free;
             document.getElementById('num-inuse').textContent=d.inUse;
             document.getElementById('num-waiting').textContent=d.waiting;
@@ -329,9 +405,7 @@ app.get('/', (req, res) => {
 
             const pill=document.getElementById('pill');
             pill.className=d.locked?'locked-pill':'live-pill';
-            pill.innerHTML=d.locked
-                ?'<div class="lock-dot"></div> Locked'
-                :'<div class="live-dot"></div> Live';
+            pill.innerHTML=d.locked?'<div class="lock-dot"></div> Locked':'<div class="live-dot"></div> Live';
 
             const freeBox=document.getElementById('free-box');
             const freeLabel=document.getElementById('free-label');
@@ -340,32 +414,24 @@ app.get('/', (req, res) => {
             const unlockBlock=document.getElementById('unlock-block');
 
             if(d.locked){
-                freeBox.style.background='#1a0a0a';
-                freeBox.style.border='1.5px solid #7f1d1d';
-                freeLabel.style.color='#f87171';
-                freeLabel.innerHTML='&#128274; Free — Locked';
+                freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:22px 18px 18px;display:flex;flex-direction:column;min-width:0;';
+                freeLabel.style.color='#f87171'; freeLabel.innerHTML='&#128274; Free — Locked';
                 freeNum.style.color='#f87171';
-                freeDesc.style.color='#7f2020';
-                freeDesc.textContent=d.reason;
+                freeDesc.style.color='#7f2020'; freeDesc.textContent=d.reason;
                 unlockBlock.style.display='block';
             } else {
-                freeBox.style.background='#0a1a0f';
-                freeBox.style.border='1.5px solid #1a4a27';
-                freeLabel.style.color='#3fb950';
-                freeLabel.innerHTML='&#10003; Free';
+                freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:22px 18px 18px;display:flex;flex-direction:column;min-width:0;';
+                freeLabel.style.color='#3fb950'; freeLabel.innerHTML='&#10003; Free';
                 freeNum.style.color='#3fb950';
-                freeDesc.style.color='#2a6e3a';
-                freeDesc.textContent='Accounts ready';
+                freeDesc.style.color='#2a6e3a'; freeDesc.textContent='Accounts ready';
                 unlockBlock.style.display='none';
             }
-        })
-        .catch(()=>{});
+        }).catch(()=>{});
     }
 
-    function showMsg(text, ok){
+    function showMsg(text,ok){
         const el=document.getElementById('add-msg');
-        el.textContent=text;
-        el.className='msg '+(ok?'msg-ok':'msg-err');
+        el.textContent=text; el.className='msg '+(ok?'msg-ok':'msg-err');
         el.style.display='block';
         setTimeout(()=>el.style.display='none',3000);
     }
@@ -374,26 +440,20 @@ app.get('/', (req, res) => {
         const phone=document.getElementById('inp-phone').value.trim();
         const password=document.getElementById('inp-pass').value.trim();
         if(!phone||!password){showMsg('Phone and password required',false);return;}
-        fetch('/add-account',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({phone,password})
-        }).then(r=>r.json()).then(d=>{
+        fetch('/add-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})})
+        .then(r=>r.json()).then(d=>{
             if(d.success){
                 showMsg('Account '+phone+' added!',true);
                 document.getElementById('inp-phone').value='';
                 document.getElementById('inp-pass').value='';
                 refreshStats();
-            } else {
-                showMsg(d.error,false);
-            }
+            } else { showMsg(d.error,false); }
         });
     }
 
     setInterval(update,1);
     setInterval(refreshStats,1000);
-    update();
-    refreshStats();
+    update(); refreshStats();
 </script>
 </body>
 </html>`);
@@ -411,7 +471,7 @@ app.get('/view/inuse', (req, res) => {
 
 app.get('/view/waiting', (req, res) => {
     const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
-        .map(a => ({ phone: a.phone + '  —  out at ' + (a.logoutTimeStr || 'N/A'), password: '' }));
+        .map(a => ({ phone: a.phone, display: a.phone + '  —  out at ' + (a.logoutTimeStr || 'N/A'), password: '' }));
     res.send(listPage('Waiting 24h', list.length + ' full accounts', list));
 });
 
@@ -420,16 +480,15 @@ app.post('/add-account', (req, res) => {
     if (!phone || !password) return res.json({ success: false, error: 'Phone and password required.' });
     if (accounts.find(a => a.phone === phone)) return res.json({ success: false, error: 'Account already exists.' });
     accounts.push({ phone, password, status: 'FREE', logoutTime: null, logoutTimeStr: null });
-    console.log(`Account added: ${phone}`);
     res.json({ success: true });
 });
 
 app.post('/remove-account', (req, res) => {
-    const { phone } = req.body;
+    const { phone, pin } = req.body;
+    if (pin !== REMOVE_PASSWORD) return res.json({ success: false, error: 'Incorrect password.' });
     const index = accounts.findIndex(a => a.phone === phone);
     if (index === -1) return res.json({ success: false, error: 'Account not found.' });
     accounts.splice(index, 1);
-    console.log(`Account removed: ${phone}`);
     res.json({ success: true });
 });
 
@@ -437,9 +496,7 @@ app.post('/request-login', (req, res) => {
     if (poolLocked) return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
     const availableAccount = accounts.find(acc => acc.status === 'FREE');
     if (availableAccount) {
-        availableAccount.status = 'IN-USE';
-        availableAccount.logoutTime = null;
-        availableAccount.logoutTimeStr = null;
+        availableAccount.status = 'IN-USE'; availableAccount.logoutTime = null; availableAccount.logoutTimeStr = null;
         return res.json({ success: true, phone: availableAccount.phone, password: availableAccount.password });
     }
     return res.json({ success: false, error: "No free accounts available" });
@@ -449,9 +506,7 @@ app.post('/login', (req, res) => {
     const { phone } = req.body;
     const account = accounts.find(acc => acc.phone === phone);
     if (account && account.status === 'FREE') {
-        account.status = 'IN-USE';
-        account.logoutTime = null;
-        account.logoutTimeStr = null;
+        account.status = 'IN-USE'; account.logoutTime = null; account.logoutTimeStr = null;
         return res.json({ success: true, message: `Account ${phone} marked as logged in.` });
     }
     return res.json({ success: false, error: "Account not available or already in use." });
@@ -461,8 +516,7 @@ app.post('/logout', (req, res) => {
     const { phone, logoutTime } = req.body;
     const account = accounts.find(acc => acc.phone === phone);
     if (account) {
-        account.logoutTime = Date.now();
-        account.logoutTimeStr = logoutTime;
+        account.logoutTime = Date.now(); account.logoutTimeStr = logoutTime;
         return res.json({ success: true, message: `Account ${phone} logged out at ${logoutTime}. Will free after 24h.` });
     }
     return res.json({ success: false, error: "Account not found." });
@@ -480,8 +534,7 @@ app.post('/aviator-lock', (req, res) => {
 
 app.post('/reset', (req, res) => {
     accounts.forEach(acc => { acc.status = 'FREE'; acc.logoutTime = null; acc.logoutTimeStr = null; });
-    poolLocked = false;
-    poolLockedReason = '';
+    poolLocked = false; poolLockedReason = '';
     res.json({ success: true });
 });
 
