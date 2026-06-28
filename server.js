@@ -82,7 +82,7 @@ const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
 const UNLOCK_HOUR = 7;
 const UNLOCK_MINUTE = 30;
 const REMOVE_PASSWORD = '1234';
-const HEARTBEAT_TIMEOUT_MS = 60 * 1000; // 1 minute
+const HEARTBEAT_TIMEOUT_MS = 3 * 1000;
 
 let poolLocked = false;
 let poolLockedReason = '';
@@ -99,7 +99,7 @@ setInterval(() => {
     });
 }, 60 * 1000);
 
-// --- HEARTBEAT CHECKER: runs every 15 seconds ---
+// --- HEARTBEAT CHECKER: runs every 2 seconds ---
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -113,7 +113,7 @@ setInterval(() => {
             }
         }
     });
-}, 15 * 1000);
+}, 2 * 1000);
 
 // --- LOCK CHECK ---
 setInterval(() => {
@@ -144,7 +144,6 @@ app.get('/stats', (req, res) => {
     });
 });
 
-// --- HEARTBEAT ENDPOINT ---
 app.post('/heartbeat', (req, res) => {
     const { phone } = req.body;
     const account = accounts.find(a => a.phone === phone);
@@ -158,7 +157,7 @@ app.post('/heartbeat', (req, res) => {
 function waitingPage(rows) {
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
-            <div class="row" data-phone="${r.phone}" data-freeat="${r.freeAt}">
+            <div class="row" data-phone="${r.phone}">
                 <div class="row-num">${i + 1}.</div>
                 <div class="row-info">
                     <div class="row-phone">${r.phone}</div>
@@ -215,33 +214,33 @@ function waitingPage(rows) {
 </div>
 <script>
     function pad(n){return String(n).padStart(2,'0')}
-    const data = ${freeAtData};
+    const data=${freeAtData};
     function updateCountdowns(){
-        const now = Date.now();
-        data.forEach(item => {
-            const el = document.getElementById('cd-'+item.id);
+        const now=Date.now();
+        data.forEach(item=>{
+            const el=document.getElementById('cd-'+item.id);
             if(!el) return;
-            const diff = item.freeAt - now;
-            if(diff <= 0){
-                el.textContent = 'Ready to free';
-                el.style.color = '#3fb950';
+            const diff=item.freeAt-now;
+            if(diff<=0){
+                el.textContent='Ready to free';
+                el.style.color='#3fb950';
             } else {
-                const h = Math.floor(diff/3600000);
-                const m = Math.floor((diff%3600000)/60000);
-                const s = Math.floor((diff%60000)/1000);
-                el.textContent = 'Free in: '+h+'h '+pad(m)+'m '+pad(s)+'s';
+                const h=Math.floor(diff/3600000);
+                const m=Math.floor((diff%3600000)/60000);
+                const s=Math.floor((diff%60000)/1000);
+                el.textContent='Free in: '+h+'h '+pad(m)+'m '+pad(s)+'s';
             }
         });
     }
     function filterRows(q){
-        const rows = document.querySelectorAll('.row');
-        const query = q.trim().toLowerCase();
-        rows.forEach(row => {
-            const phone = row.getAttribute('data-phone') || '';
-            row.classList.toggle('hidden', query !== '' && !phone.toLowerCase().includes(query));
+        const rows=document.querySelectorAll('.row');
+        const query=q.trim().toLowerCase();
+        rows.forEach(row=>{
+            const phone=row.getAttribute('data-phone')||'';
+            row.classList.toggle('hidden',query!==''&&!phone.toLowerCase().includes(query));
         });
     }
-    setInterval(updateCountdowns, 1);
+    setInterval(updateCountdowns,1);
     updateCountdowns();
 </script>
 </body>
@@ -333,27 +332,27 @@ function listPage(title, subtitle, rows, type) {
 </div>
 
 <script>
-    let pendingPhone = null;
-    const listType = '${type}';
+    let pendingPhone=null;
+    const listType='${type}';
     function removeAccount(phone){
-        pendingPhone = phone;
+        pendingPhone=phone;
         document.getElementById('pin-input').value='';
         document.getElementById('pin-err').style.display='none';
         document.getElementById('pin-modal').style.display='flex';
         setTimeout(()=>document.getElementById('pin-input').focus(),100);
     }
     function closePin(){
-        pendingPhone = null;
+        pendingPhone=null;
         document.getElementById('pin-modal').style.display='none';
     }
     function confirmRemove(){
-        const pin = document.getElementById('pin-input').value.trim();
-        if(pin !== '1234'){
+        const pin=document.getElementById('pin-input').value.trim();
+        if(pin!=='1234'){
             document.getElementById('pin-err').style.display='block';
             document.getElementById('pin-input').value='';
             return;
         }
-        const endpoint = listType === 'bad' ? '/remove-bad-password' : '/remove-account';
+        const endpoint=listType==='bad'?'/remove-bad-password':'/remove-account';
         fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:pendingPhone,pin})})
         .then(r=>r.json()).then(d=>{
             if(d.success){
@@ -455,9 +454,9 @@ app.get('/', (req, res) => {
 <div class="db">
     <div class="top-bar">
         <div class="db-title">&#128274; Login pool manager</div>
-        <div id="pill" class="${poolLocked ? 'locked-pill' : 'live-pill'}">
-            <div class="${poolLocked ? 'lock-dot' : 'live-dot'}"></div>
-            ${poolLocked ? 'Locked' : 'Live'}
+        <div id="pill" class="${poolLocked?'locked-pill':'live-pill'}">
+            <div class="${poolLocked?'lock-dot':'live-dot'}"></div>
+            ${poolLocked?'Locked':'Live'}
         </div>
     </div>
     <div class="four-boxes">
