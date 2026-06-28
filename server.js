@@ -79,8 +79,6 @@ let badPasswordAccounts = [];
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
-const LOCK_HOUR = 18;
-const LOCK_MINUTE = 0;
 const UNLOCK_HOUR = 7;
 const UNLOCK_MINUTE = 30;
 const REMOVE_PASSWORD = '1234';
@@ -90,6 +88,7 @@ let poolLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
+// --- AUTO-FREE after 24h ---
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -99,17 +98,27 @@ setInterval(() => {
     });
 }, 60 * 1000);
 
+// --- LOCK CHECK: only locks at 50 accounts, unlocks at 07:30 ---
 setInterval(() => {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
-    const isAfterLock = (hour > LOCK_HOUR) || (hour === LOCK_HOUR && minute >= LOCK_MINUTE);
-    const isAfterUnlock = (hour > UNLOCK_HOUR) || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE);
-    const isLockWindow = isAfterLock || !isAfterUnlock;
-    if (poolLocked && isAfterUnlock && !isAfterLock) { poolLocked = false; poolLockedReason = ''; return; }
-    if (!poolLocked && isLockWindow) { poolLocked = true; poolLockedReason = 'Daily lock active (18:00 — 07:30). Unlocks at 07:30.'; return; }
-    if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) { poolLocked = true; poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`; }
+
+    // Auto-unlock at 07:30
+    if (poolLocked && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE))) {
+        poolLocked = false;
+        poolLockedReason = '';
+        console.log('Pool unlocked at 07:30.');
+        return;
+    }
+
+    // Lock if free accounts hit exactly 50
+    if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
+        poolLocked = true;
+        poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
+        console.log(poolLockedReason);
+    }
 }, 10 * 1000);
 
 app.get('/stats', (req, res) => {
