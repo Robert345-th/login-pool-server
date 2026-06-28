@@ -12,15 +12,13 @@ app.use((req, res, next) => {
     next();
 });
 
-// --- ACCOUNT POOL ---
 let accounts = [
-    { phone: "0763207608", password: "R0978012009", status: "FREE", logoutTime: null },
-    { phone: "0760017804", password: "R0978012009", status: "FREE", logoutTime: null },
+    { phone: "0763207608", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "0760017804", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
 ];
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-// --- AUTO-FREE CHECK: runs every minute ---
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -28,11 +26,11 @@ setInterval(() => {
             console.log(`Auto-freeing account ${acc.phone} after 24 hours.`);
             acc.status = 'FREE';
             acc.logoutTime = null;
+            acc.logoutTimeStr = null;
         }
     });
 }, 60 * 1000);
 
-// --- DASHBOARD ---
 app.get('/', (req, res) => {
     const now = Date.now();
     const freeAccounts = accounts.filter(acc => acc.status === 'FREE');
@@ -55,7 +53,10 @@ app.get('/', (req, res) => {
             <div>
                 <div style="color:#f8fafc; font-weight:bold; font-size:1.05em;">📱 ${acc.phone}</div>
                 <div style="color:#94a3b8; font-size:0.85em; margin-top:4px;">🔑 ${acc.password}</div>
-                ${showTimer ? `<div style="color:#fbbf24; font-size:0.8em; margin-top:4px;">⏳ Free in: ${timeUntilFree(acc)}</div>` : ''}
+                ${showTimer ? `
+                    <div style="color:#fbbf24; font-size:0.8em; margin-top:4px;">⏳ Free in: ${timeUntilFree(acc)}</div>
+                    <div style="color:#94a3b8; font-size:0.8em; margin-top:2px;">🕐 Logged out at: ${acc.logoutTimeStr || 'N/A'}</div>
+                ` : ''}
             </div>
             <span style="background:${statusColor}; color:${statusText}; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:0.8em; text-transform:uppercase;">
                 ${acc.status}
@@ -116,12 +117,12 @@ app.get('/', (req, res) => {
     `);
 });
 
-// --- API ENDPOINTS ---
 app.post('/request-login', (req, res) => {
     const availableAccount = accounts.find(acc => acc.status === 'FREE');
     if (availableAccount) {
         availableAccount.status = 'IN-USE';
         availableAccount.logoutTime = null;
+        availableAccount.logoutTimeStr = null;
         return res.json({ success: true, phone: availableAccount.phone, password: availableAccount.password });
     }
     return res.json({ success: false, error: "No free accounts available" });
@@ -133,19 +134,22 @@ app.post('/login', (req, res) => {
     if (account && account.status === 'FREE') {
         account.status = 'IN-USE';
         account.logoutTime = null;
+        account.logoutTimeStr = null;
         return res.json({ success: true, message: `Account ${phone} marked as logged in.` });
     }
     return res.json({ success: false, error: "Account not available or already in use." });
 });
 
 app.post('/logout', (req, res) => {
-    const { phone } = req.body;
+    const { phone, logoutTime } = req.body;
     const account = accounts.find(acc => acc.phone === phone);
-    if (account && account.status === 'IN-USE') {
-        account.logoutTime = Date.now(); // start 24h countdown
-        return res.json({ success: true, message: `Account ${phone} logout time recorded. Will free after 24h.` });
+    if (account) {
+        account.logoutTime = Date.now();
+        account.logoutTimeStr = logoutTime;
+        console.log(`Account ${phone} logged out at ${logoutTime}`);
+        return res.json({ success: true, message: `Account ${phone} logged out at ${logoutTime}. Will free after 24h.` });
     }
-    return res.json({ success: false, error: "Account not found or not in use." });
+    return res.json({ success: false, error: "Account not found." });
 });
 
 app.post('/aviator-lock', (req, res) => {
@@ -159,7 +163,7 @@ app.post('/aviator-lock', (req, res) => {
 });
 
 app.post('/reset', (req, res) => {
-    accounts.forEach(acc => { acc.status = 'FREE'; acc.logoutTime = null; });
+    accounts.forEach(acc => { acc.status = 'FREE'; acc.logoutTime = null; acc.logoutTimeStr = null; });
     res.json({ success: true });
 });
 
