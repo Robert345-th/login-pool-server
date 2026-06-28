@@ -26,6 +26,13 @@ const UNLOCK_MINUTE = 30;
 let poolLocked = false;
 let poolLockedReason = '';
 
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function timeNow() {
+    const now = new Date();
+    return pad(now.getHours()) + ':' + pad(now.getMinutes());
+}
+
 // --- AUTO-FREE after 24h ---
 setInterval(() => {
     const now = Date.now();
@@ -39,7 +46,7 @@ setInterval(() => {
     });
 }, 60 * 1000);
 
-// --- LOCK / UNLOCK CHECK: runs every 10 seconds ---
+// --- LOCK / UNLOCK CHECK ---
 setInterval(() => {
     const now = new Date();
     const hour = now.getHours();
@@ -56,32 +63,66 @@ setInterval(() => {
         console.log('Pool unlocked at 07:30.');
         return;
     }
-
     if (!poolLocked && isLockWindow) {
         poolLocked = true;
         poolLockedReason = 'Daily lock active (18:00 — 07:30). Unlocks at 07:30.';
         console.log(poolLockedReason);
         return;
     }
-
     if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
         poolLocked = true;
         poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
         console.log(poolLockedReason);
     }
-
 }, 10 * 1000);
 
-function pad(n) { return String(n).padStart(2, '0'); }
+// --- LIST PAGE TEMPLATE ---
+function listPage(title, subtitle, rows) {
+    const rowsHtml = rows.length
+        ? rows.map((r, i) => `
+            <div style="display:flex;align-items:center;padding:14px 24px;border-bottom:1px solid #161b22;">
+                <div style="font-size:13px;color:#4b5563;width:32px;flex-shrink:0;">${i + 1}.</div>
+                <div style="font-size:15px;color:#e6edf3;font-weight:500;">${r}</div>
+            </div>`).join('')
+        : `<div style="padding:40px 24px;text-align:center;color:#4b5563;font-size:13px;">No accounts</div>`;
 
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <title>${title}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
+        .page{background:#0d1117;border-radius:16px;width:100%;max-width:480px;margin:0 auto;overflow:hidden}
+        .page-header{padding:20px 24px 16px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:14px}
+        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none;display:inline-block}
+        .back-btn:hover{background:#21262d;color:#e6edf3}
+        .header-text{}
+        .page-title{font-size:16px;font-weight:500;color:#e6edf3}
+        .page-subtitle{font-size:11px;color:#4b5563;margin-top:3px}
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="page-header">
+        <a href="/" class="back-btn">&#8592; Back</a>
+        <div class="header-text">
+            <div class="page-title">${title}</div>
+            <div class="page-subtitle">${subtitle}</div>
+        </div>
+    </div>
+    ${rowsHtml}
+</div>
+</body>
+</html>`;
+}
+
+// --- MAIN DASHBOARD ---
 app.get('/', (req, res) => {
     const freeAccounts = accounts.filter(a => a.status === 'FREE');
     const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
     const waitingAccounts = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime);
-
-    const freePhones = JSON.stringify(freeAccounts.map(a => a.phone));
-    const inUsePhones = JSON.stringify(inUseAccounts.map(a => a.phone));
-    const waitingPhones = JSON.stringify(waitingAccounts.map(a => a.phone + ' — out at ' + (a.logoutTimeStr || 'N/A')));
 
     res.send(`<!DOCTYPE html>
 <html>
@@ -122,29 +163,15 @@ app.get('/', (req, res) => {
         .desc-waiting{color:#4a3080}
         .unlock-timer{font-size:17px;font-weight:500;color:#fff;letter-spacing:-0.5px;margin-bottom:3px}
         .unlock-sub{font-size:10px;color:#4b1111;margin-bottom:12px}
-        .view-btn{width:100%;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:11px;border:none;background:#92400e;color:#fed7aa;margin-bottom:8px}
+        .view-btn{width:100%;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:none;background:#92400e;color:#fed7aa;margin-bottom:8px;text-decoration:none}
         .view-btn:hover{background:#a05213}
-        .acc-count{text-align:center;font-size:20px;font-weight:500;color:#f97316}
-        .acc-count-locked{text-align:center;font-size:20px;font-weight:500;color:#f87171}
+        .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 9px;font-size:12px;font-weight:700}
         .divider{height:1px;background:#1a1f2a;margin-bottom:20px}
         .reset-btn{width:100%;background:#130a0a;border:1.5px solid #3d1515;color:#f85149;padding:13px;border-radius:12px;font-size:13px;font-weight:500;cursor:pointer}
         .reset-btn:hover{background:#1f0e0e}
         .footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
         .tick{font-size:11px;color:#3fb950;font-family:monospace;opacity:0.7}
         .hint{font-size:10px;color:#252b35}
-        .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
-        .modal{background:#0d1117;border:1.5px solid #21262d;border-radius:16px;width:100%;max-width:360px;max-height:80vh;display:flex;flex-direction:column}
-        .modal-header{padding:18px 20px 14px;border-bottom:1px solid #21262d;display:flex;justify-content:space-between;align-items:flex-start}
-        .modal-title{font-size:15px;font-weight:500;color:#e6edf3}
-        .modal-subtitle{font-size:11px;color:#4b5563;margin-top:3px}
-        .modal-close{background:none;border:none;color:#4b5563;font-size:22px;cursor:pointer;line-height:1}
-        .modal-close:hover{color:#e6edf3}
-        .modal-body{overflow-y:auto;padding:8px 0}
-        .modal-row{display:flex;align-items:center;padding:11px 20px;border-bottom:1px solid #161b22}
-        .modal-row:last-child{border-bottom:none}
-        .modal-idx{font-size:12px;color:#4b5563;width:28px;flex-shrink:0}
-        .modal-phone{font-size:14px;color:#e6edf3;font-weight:500}
-        .modal-empty{padding:24px 20px;text-align:center;color:#4b5563;font-size:13px}
         @media(max-width:500px){.three-boxes{grid-template-columns:1fr}.box-num{font-size:48px}}
     </style>
 </head>
@@ -172,24 +199,21 @@ app.get('/', (req, res) => {
             ` : `
                 <div class="box-desc desc-free">Accounts ready</div>
             `}
-            <button class="view-btn" onclick="openModal('Free Accounts', '${freeAccounts.length} accounts ready', ${freePhones})">View</button>
-            <div class="${poolLocked ? 'acc-count-locked' : 'acc-count'}">${freeAccounts.length}</div>
+            <a href="/view/free" class="view-btn">View <span class="view-count">${freeAccounts.length}</span></a>
         </div>
 
         <div class="box box-inuse">
             <div class="box-label inuse-col">&#9654; In use</div>
             <div class="box-num num-inuse">${inUseAccounts.length}</div>
             <div class="box-desc desc-inuse">Not yet logged out</div>
-            <button class="view-btn" onclick="openModal('In Use', '${inUseAccounts.length} not yet logged out', ${inUsePhones})">View</button>
-            <div class="acc-count">${inUseAccounts.length}</div>
+            <a href="/view/inuse" class="view-btn">View <span class="view-count">${inUseAccounts.length}</span></a>
         </div>
 
         <div class="box box-waiting">
             <div class="box-label waiting-col">&#9203; Waiting 24h</div>
             <div class="box-num num-waiting">${waitingAccounts.length}</div>
             <div class="box-desc desc-waiting">Full account</div>
-            <button class="view-btn" onclick="openModal('Waiting 24h', '${waitingAccounts.length} full accounts', ${waitingPhones})">View</button>
-            <div class="acc-count">${waitingAccounts.length}</div>
+            <a href="/view/waiting" class="view-btn">View <span class="view-count">${waitingAccounts.length}</span></a>
         </div>
 
     </div>
@@ -205,43 +229,14 @@ app.get('/', (req, res) => {
         <span class="hint">Auto-refresh: 1ms</span>
     </div>
 </div>
-
-<!-- MODAL -->
-<div class="modal-overlay" id="modal" style="display:none;" onclick="if(event.target===this)closeModal()">
-    <div class="modal">
-        <div class="modal-header">
-            <div>
-                <div class="modal-title" id="modal-title"></div>
-                <div class="modal-subtitle" id="modal-subtitle"></div>
-            </div>
-            <button class="modal-close" onclick="closeModal()">&#215;</button>
-        </div>
-        <div class="modal-body" id="modal-body"></div>
-    </div>
-</div>
-
 <script>
     function pad(n){return String(n).padStart(2,'0')}
-
-    function openModal(title, subtitle, phones){
-        document.getElementById('modal-title').textContent = title;
-        document.getElementById('modal-subtitle').textContent = subtitle;
-        document.getElementById('modal-body').innerHTML = phones.length
-            ? phones.map((p,i) => '<div class="modal-row"><div class="modal-idx">'+(i+1)+'.</div><div class="modal-phone">'+p+'</div></div>').join('')
-            : '<div class="modal-empty">No accounts</div>';
-        document.getElementById('modal').style.display='flex';
-    }
-
-    function closeModal(){
-        document.getElementById('modal').style.display='none';
-    }
-
     function update(){
-        const now = new Date();
-        document.getElementById('tick').textContent = pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
-        const cd = document.getElementById('unlock-countdown');
+        const now=new Date();
+        document.getElementById('tick').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+        const cd=document.getElementById('unlock-countdown');
         if(cd){
-            const unlock = new Date();
+            const unlock=new Date();
             unlock.setHours(7,30,0,0);
             if(unlock<=now) unlock.setDate(unlock.getDate()+1);
             const diff=unlock-now;
@@ -251,7 +246,6 @@ app.get('/', (req, res) => {
             cd.textContent=h+'h '+pad(m)+'m '+pad(s)+'s';
         }
     }
-
     setInterval(update,1);
     update();
     setInterval(()=>location.reload(),5000);
@@ -260,6 +254,24 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
+// --- VIEW PAGES ---
+app.get('/view/free', (req, res) => {
+    const list = accounts.filter(a => a.status === 'FREE').map(a => a.phone);
+    res.send(listPage('Free Accounts', list.length + ' accounts ready', list));
+});
+
+app.get('/view/inuse', (req, res) => {
+    const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime).map(a => a.phone);
+    res.send(listPage('In Use', list.length + ' not yet logged out', list));
+});
+
+app.get('/view/waiting', (req, res) => {
+    const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
+        .map(a => a.phone + '  —  out at ' + (a.logoutTimeStr || 'N/A'));
+    res.send(listPage('Waiting 24h', list.length + ' full accounts', list));
+});
+
+// --- API ENDPOINTS ---
 app.post('/request-login', (req, res) => {
     if (poolLocked) {
         return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
