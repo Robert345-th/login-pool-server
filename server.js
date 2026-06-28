@@ -75,6 +75,9 @@ let accounts = [
     { phone: "574604175", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
 ];
 
+// Separate list for bad password accounts
+let badPasswordAccounts = [];
+
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
 const LOCK_HOUR = 18;
@@ -115,18 +118,22 @@ app.get('/stats', (req, res) => {
         free: accounts.filter(a => a.status === 'FREE').length,
         inUse: accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime).length,
         waiting: accounts.filter(a => a.status === 'IN-USE' && a.logoutTime).length,
+        badPassword: badPasswordAccounts.length,
         locked: poolLocked,
         reason: poolLockedReason
     });
 });
 
-function listPage(title, subtitle, rows) {
+function listPage(title, subtitle, rows, type) {
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
             <div class="row" data-phone="${r.phone}">
                 <div class="row-num">${i + 1}.</div>
-                <div class="row-phone">${r.display || r.phone}</div>
-                <div class="row-pass">${r.password || ''}</div>
+                <div class="row-info">
+                    <div class="row-phone">${r.display || r.phone}</div>
+                    ${r.password ? `<div class="row-pass">${r.password}</div>` : ''}
+                    ${r.reportedAt ? `<div class="row-time">&#9888; Reported at ${r.reportedAt}</div>` : ''}
+                </div>
                 <button class="rm-btn" onclick="removeAccount('${r.phone}')">Remove</button>
             </div>`).join('')
         : `<div class="empty">No accounts</div>`;
@@ -152,14 +159,14 @@ function listPage(title, subtitle, rows) {
         .row{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid #161b22;gap:10px}
         .row:last-child{border-bottom:none}
         .row-num{font-size:12px;color:#4b5563;width:26px;flex-shrink:0}
-        .row-phone{font-size:14px;color:#e6edf3;font-weight:500;flex:1}
-        .row-pass{font-size:11px;color:#4b5563;margin-right:4px}
+        .row-info{flex:1;min-width:0}
+        .row-phone{font-size:14px;color:#e6edf3;font-weight:500}
+        .row-pass{font-size:11px;color:#4b5563;margin-top:2px}
+        .row-time{font-size:11px;color:#f87171;margin-top:2px}
         .rm-btn{background:#2d0a0a;border:1px solid #7f1d1d;color:#f87171;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0}
         .rm-btn:hover{background:#3d1010}
         .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
         .hidden{display:none}
-
-        /* PIN MODAL */
         .pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
         .pin-box{background:#0d1117;border:1.5px solid #21262d;border-radius:16px;padding:28px 24px;width:100%;max-width:320px;text-align:center}
         .pin-title{font-size:15px;font-weight:500;color:#e6edf3;margin-bottom:6px}
@@ -188,7 +195,6 @@ function listPage(title, subtitle, rows) {
     <div id="list">${rowsHtml}</div>
 </div>
 
-<!-- PIN MODAL -->
 <div class="pin-overlay" id="pin-modal" style="display:none;">
     <div class="pin-box">
         <div class="pin-title">&#128274; Confirm removal</div>
@@ -204,6 +210,7 @@ function listPage(title, subtitle, rows) {
 
 <script>
     let pendingPhone = null;
+    const listType = '${type}';
 
     function removeAccount(phone){
         pendingPhone = phone;
@@ -225,14 +232,14 @@ function listPage(title, subtitle, rows) {
             document.getElementById('pin-input').value='';
             return;
         }
-        fetch('/remove-account',{
+        const endpoint = listType === 'bad' ? '/remove-bad-password' : '/remove-account';
+        fetch(endpoint,{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({phone: pendingPhone, pin})
         }).then(r=>r.json()).then(d=>{
             if(d.success){
                 closePin();
-                // remove row from DOM without reloading
                 const row = document.querySelector('[data-phone="'+pendingPhone+'"]');
                 if(row) row.remove();
             } else {
@@ -242,10 +249,9 @@ function listPage(title, subtitle, rows) {
         });
     }
 
-    // Allow pressing Enter in pin input
     document.getElementById('pin-input').addEventListener('keydown', e => {
-        if(e.key === 'Enter') confirmRemove();
-        if(e.key === 'Escape') closePin();
+        if(e.key==='Enter') confirmRemove();
+        if(e.key==='Escape') closePin();
     });
 
     function filterRows(q){
@@ -274,7 +280,7 @@ app.get('/', (req, res) => {
     <style>
         *{box-sizing:border-box;margin:0;padding:0}
         body{font-family:sans-serif;background:#04060a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-        .db{background:#080b10;border-radius:20px;padding:30px;width:100%;max-width:720px}
+        .db{background:#080b10;border-radius:20px;padding:30px;width:100%;max-width:760px}
         .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
         .db-title{font-size:20px;font-weight:500;color:#fff}
         .live-pill{background:#0d4429;color:#3fb950;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:500;display:flex;align-items:center;gap:6px}
@@ -282,28 +288,32 @@ app.get('/', (req, res) => {
         .live-dot{width:7px;height:7px;background:#3fb950;border-radius:50%;animation:blink 1.2s infinite}
         .lock-dot{width:7px;height:7px;background:#f87171;border-radius:50%;animation:blink 0.8s infinite}
         @keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
-        .three-boxes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px}
-        .box{border-radius:16px;padding:22px 18px 18px;display:flex;flex-direction:column;min-width:0}
+        .four-boxes{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:20px}
+        .box{border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0}
         .box-free{background:#0a1a0f;border:1.5px solid #1a4a27}
         .box-inuse{background:#080f1f;border:1.5px solid #1a2f55}
         .box-waiting{background:#120c22;border:1.5px solid #2e1f55}
+        .box-bad{background:#1a0f0a;border:1.5px solid #4a1f0a}
         .box-label{font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
         .free-col{color:#3fb950}
         .inuse-col{color:#58a6ff}
         .waiting-col{color:#c4b5fd}
-        .box-num{font-size:64px;font-weight:500;line-height:1;letter-spacing:-3px;margin-bottom:8px}
+        .bad-col{color:#fb923c}
+        .box-num{font-size:56px;font-weight:500;line-height:1;letter-spacing:-3px;margin-bottom:8px}
         .num-free{color:#3fb950}
         .num-inuse{color:#58a6ff}
         .num-waiting{color:#c4b5fd}
+        .num-bad{color:#fb923c}
         .box-desc{font-size:11px;margin-bottom:16px;flex:1;line-height:1.4}
         .desc-free{color:#2a6e3a}
         .desc-inuse{color:#1e4a7a}
         .desc-waiting{color:#4a3080}
-        .unlock-timer{font-size:17px;font-weight:500;color:#fff;margin-bottom:3px}
+        .desc-bad{color:#7a3a10}
+        .unlock-timer{font-size:15px;font-weight:500;color:#fff;margin-bottom:3px}
         .unlock-sub{font-size:10px;color:#4b1111;margin-bottom:12px}
-        .view-btn{width:100%;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:none;background:#92400e;color:#fed7aa;text-decoration:none}
+        .view-btn{width:100%;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:none;background:#92400e;color:#fed7aa;text-decoration:none}
         .view-btn:hover{background:#a05213}
-        .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 9px;font-size:12px;font-weight:700}
+        .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 8px;font-size:11px;font-weight:700}
         .divider{height:1px;background:#1a1f2a;margin-bottom:20px}
         .add-box{background:#0d1117;border:1.5px solid #21262d;border-radius:14px;padding:20px 24px;margin-bottom:20px}
         .add-title{font-size:13px;font-weight:500;color:#8b949e;margin-bottom:14px;letter-spacing:0.5px;text-transform:uppercase}
@@ -321,7 +331,8 @@ app.get('/', (req, res) => {
         .msg{font-size:12px;margin-top:10px;padding:8px 12px;border-radius:6px;display:none}
         .msg-ok{background:#0d4429;color:#3fb950}
         .msg-err{background:#4b1111;color:#f87171}
-        @media(max-width:500px){.three-boxes{grid-template-columns:1fr}.box-num{font-size:48px}}
+        @media(max-width:600px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:44px}}
+        @media(max-width:400px){.four-boxes{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
@@ -334,7 +345,7 @@ app.get('/', (req, res) => {
         </div>
     </div>
 
-    <div class="three-boxes">
+    <div class="four-boxes">
         <div class="box box-free" id="free-box">
             <div class="box-label free-col" id="free-label">&#10003; Free</div>
             <div class="box-num num-free" id="num-free">${freeAccounts.length}</div>
@@ -345,17 +356,26 @@ app.get('/', (req, res) => {
             </div>
             <a href="/view/free" class="view-btn">View <span class="view-count" id="cnt-free">${freeAccounts.length}</span></a>
         </div>
+
         <div class="box box-inuse">
             <div class="box-label inuse-col">&#9654; In use</div>
             <div class="box-num num-inuse" id="num-inuse">${inUseAccounts.length}</div>
             <div class="box-desc desc-inuse">Not yet logged out</div>
             <a href="/view/inuse" class="view-btn">View <span class="view-count" id="cnt-inuse">${inUseAccounts.length}</span></a>
         </div>
+
         <div class="box box-waiting">
             <div class="box-label waiting-col">&#9203; Waiting 24h</div>
             <div class="box-num num-waiting" id="num-waiting">${waitingAccounts.length}</div>
             <div class="box-desc desc-waiting">Full account</div>
             <a href="/view/waiting" class="view-btn">View <span class="view-count" id="cnt-waiting">${waitingAccounts.length}</span></a>
+        </div>
+
+        <div class="box box-bad">
+            <div class="box-label bad-col">&#10060; Bad password</div>
+            <div class="box-num num-bad" id="num-bad">${badPasswordAccounts.length}</div>
+            <div class="box-desc desc-bad">Login failed</div>
+            <a href="/view/bad" class="view-btn">View <span class="view-count" id="cnt-bad">${badPasswordAccounts.length}</span></a>
         </div>
     </div>
 
@@ -386,7 +406,7 @@ app.get('/', (req, res) => {
         const now=new Date();
         document.getElementById('tick').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
         const cd=document.getElementById('unlock-countdown');
-        if(cd && cd.parentElement.style.display!=='none'){
+        if(cd && document.getElementById('unlock-block').style.display!=='none'){
             const unlock=new Date(); unlock.setHours(7,30,0,0);
             if(unlock<=now) unlock.setDate(unlock.getDate()+1);
             const diff=unlock-now;
@@ -399,9 +419,11 @@ app.get('/', (req, res) => {
             document.getElementById('num-free').textContent=d.free;
             document.getElementById('num-inuse').textContent=d.inUse;
             document.getElementById('num-waiting').textContent=d.waiting;
+            document.getElementById('num-bad').textContent=d.badPassword;
             document.getElementById('cnt-free').textContent=d.free;
             document.getElementById('cnt-inuse').textContent=d.inUse;
             document.getElementById('cnt-waiting').textContent=d.waiting;
+            document.getElementById('cnt-bad').textContent=d.badPassword;
 
             const pill=document.getElementById('pill');
             pill.className=d.locked?'locked-pill':'live-pill';
@@ -414,13 +436,13 @@ app.get('/', (req, res) => {
             const unlockBlock=document.getElementById('unlock-block');
 
             if(d.locked){
-                freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:22px 18px 18px;display:flex;flex-direction:column;min-width:0;';
+                freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
                 freeLabel.style.color='#f87171'; freeLabel.innerHTML='&#128274; Free — Locked';
                 freeNum.style.color='#f87171';
                 freeDesc.style.color='#7f2020'; freeDesc.textContent=d.reason;
                 unlockBlock.style.display='block';
             } else {
-                freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:22px 18px 18px;display:flex;flex-direction:column;min-width:0;';
+                freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
                 freeLabel.style.color='#3fb950'; freeLabel.innerHTML='&#10003; Free';
                 freeNum.style.color='#3fb950';
                 freeDesc.style.color='#2a6e3a'; freeDesc.textContent='Accounts ready';
@@ -461,18 +483,38 @@ app.get('/', (req, res) => {
 
 app.get('/view/free', (req, res) => {
     const list = accounts.filter(a => a.status === 'FREE');
-    res.send(listPage('Free Accounts', list.length + ' accounts ready', list));
+    res.send(listPage('Free Accounts', list.length + ' accounts ready', list, 'free'));
 });
 
 app.get('/view/inuse', (req, res) => {
     const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
-    res.send(listPage('In Use', list.length + ' not yet logged out', list));
+    res.send(listPage('In Use', list.length + ' not yet logged out', list, 'inuse'));
 });
 
 app.get('/view/waiting', (req, res) => {
     const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
         .map(a => ({ phone: a.phone, display: a.phone + '  —  out at ' + (a.logoutTimeStr || 'N/A'), password: '' }));
-    res.send(listPage('Waiting 24h', list.length + ' full accounts', list));
+    res.send(listPage('Waiting 24h', list.length + ' full accounts', list, 'waiting'));
+});
+
+app.get('/view/bad', (req, res) => {
+    res.send(listPage('Bad Password', badPasswordAccounts.length + ' accounts with wrong password', badPasswordAccounts, 'bad'));
+});
+
+app.post('/wrong-password', (req, res) => {
+    const { phone } = req.body;
+    if (!phone) return res.json({ success: false, error: 'Phone required.' });
+    const now = new Date();
+    const timeStr = pad(now.getHours()) + ':' + pad(now.getMinutes());
+    // Remove from main accounts
+    const index = accounts.findIndex(a => a.phone === phone);
+    const acc = index !== -1 ? accounts.splice(index, 1)[0] : { phone, password: 'unknown' };
+    // Add to bad password list if not already there
+    if (!badPasswordAccounts.find(a => a.phone === phone)) {
+        badPasswordAccounts.push({ phone: acc.phone, password: acc.password, reportedAt: timeStr, status: 'BAD_PASSWORD' });
+        console.log(`Bad password account: ${phone} at ${timeStr}`);
+    }
+    res.json({ success: true });
 });
 
 app.post('/add-account', (req, res) => {
@@ -489,6 +531,15 @@ app.post('/remove-account', (req, res) => {
     const index = accounts.findIndex(a => a.phone === phone);
     if (index === -1) return res.json({ success: false, error: 'Account not found.' });
     accounts.splice(index, 1);
+    res.json({ success: true });
+});
+
+app.post('/remove-bad-password', (req, res) => {
+    const { phone, pin } = req.body;
+    if (pin !== REMOVE_PASSWORD) return res.json({ success: false, error: 'Incorrect password.' });
+    const index = badPasswordAccounts.findIndex(a => a.phone === phone);
+    if (index === -1) return res.json({ success: false, error: 'Account not found.' });
+    badPasswordAccounts.splice(index, 1);
     res.json({ success: true });
 });
 
