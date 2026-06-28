@@ -12,8 +12,67 @@ app.use((req, res, next) => {
 });
 
 let accounts = [
-    { phone: "0763207608", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "0760017804", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574623467", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "777263261", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574960432", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574040623", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574623403", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574576605", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574604316", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574219917", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574238215", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "778227919", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574555706", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "573164297", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574138374", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574559302", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574153025", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "779171327", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574084958", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574641548", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574641543", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574940273", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "778301604", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574976516", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574638143", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "779171438", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574987429", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574607021", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574238234", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574219916", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574153094", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574987395", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574203227", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574191028", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574976555", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "770942244", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574076004", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574219728", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "573213942", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574238217", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574048581", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574145023", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574219788", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574153033", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574219794", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574111345", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574084951", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "778228223", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "955216051", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "953583623", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "750054275", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "953659386", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574604324", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574153024", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574555717", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574939954", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574576734", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "573271807", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574015146", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574125189", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "573507265", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574195197", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574604175", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
 ];
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
@@ -28,17 +87,10 @@ let poolLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
-function timeNow() {
-    const now = new Date();
-    return pad(now.getHours()) + ':' + pad(now.getMinutes());
-}
-
-// --- AUTO-FREE after 24h ---
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
         if (acc.status === 'IN-USE' && acc.logoutTime && (now - acc.logoutTime >= TWENTY_FOUR_HOURS_MS)) {
-            console.log(`Auto-freeing account ${acc.phone} after 24 hours.`);
             acc.status = 'FREE';
             acc.logoutTime = null;
             acc.logoutTimeStr = null;
@@ -46,13 +98,11 @@ setInterval(() => {
     });
 }, 60 * 1000);
 
-// --- LOCK / UNLOCK CHECK ---
 setInterval(() => {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
-
     const isAfterLock = (hour > LOCK_HOUR) || (hour === LOCK_HOUR && minute >= LOCK_MINUTE);
     const isAfterUnlock = (hour > UNLOCK_HOUR) || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE);
     const isLockWindow = isAfterLock || !isAfterUnlock;
@@ -60,23 +110,19 @@ setInterval(() => {
     if (poolLocked && isAfterUnlock && !isAfterLock) {
         poolLocked = false;
         poolLockedReason = '';
-        console.log('Pool unlocked at 07:30.');
         return;
     }
     if (!poolLocked && isLockWindow) {
         poolLocked = true;
         poolLockedReason = 'Daily lock active (18:00 — 07:30). Unlocks at 07:30.';
-        console.log(poolLockedReason);
         return;
     }
     if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
         poolLocked = true;
         poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
-        console.log(poolLockedReason);
     }
 }, 10 * 1000);
 
-// --- LIST PAGE TEMPLATE ---
 function listPage(title, subtitle, rows) {
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
@@ -96,9 +142,8 @@ function listPage(title, subtitle, rows) {
         body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
         .page{background:#0d1117;border-radius:16px;width:100%;max-width:480px;margin:0 auto;overflow:hidden}
         .page-header{padding:20px 24px 16px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:14px}
-        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none;display:inline-block}
+        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}
         .back-btn:hover{background:#21262d;color:#e6edf3}
-        .header-text{}
         .page-title{font-size:16px;font-weight:500;color:#e6edf3}
         .page-subtitle{font-size:11px;color:#4b5563;margin-top:3px}
     </style>
@@ -107,7 +152,7 @@ function listPage(title, subtitle, rows) {
 <div class="page">
     <div class="page-header">
         <a href="/" class="back-btn">&#8592; Back</a>
-        <div class="header-text">
+        <div>
             <div class="page-title">${title}</div>
             <div class="page-subtitle">${subtitle}</div>
         </div>
@@ -118,7 +163,6 @@ function listPage(title, subtitle, rows) {
 </html>`;
 }
 
-// --- MAIN DASHBOARD ---
 app.get('/', (req, res) => {
     const freeAccounts = accounts.filter(a => a.status === 'FREE');
     const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
@@ -134,7 +178,7 @@ app.get('/', (req, res) => {
         body{font-family:sans-serif;background:#04060a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
         .db{background:#080b10;border-radius:20px;padding:30px;width:100%;max-width:720px}
         .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
-        .db-title{font-size:20px;font-weight:500;color:#fff;display:flex;align-items:center;gap:10px}
+        .db-title{font-size:20px;font-weight:500;color:#fff}
         .live-pill{background:#0d4429;color:#3fb950;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:500;display:flex;align-items:center;gap:6px}
         .locked-pill{background:#4b1111;color:#f87171;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:500;display:flex;align-items:center;gap:6px}
         .live-dot{width:7px;height:7px;background:#3fb950;border-radius:50%;animation:blink 1.2s infinite}
@@ -146,7 +190,7 @@ app.get('/', (req, res) => {
         .box-free-locked{background:#1a0a0a;border:1.5px solid #7f1d1d}
         .box-inuse{background:#080f1f;border:1.5px solid #1a2f55}
         .box-waiting{background:#120c22;border:1.5px solid #2e1f55}
-        .box-label{font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:5px;margin-bottom:14px}
+        .box-label{font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
         .free-col{color:#3fb950}
         .free-locked-col{color:#f87171}
         .inuse-col{color:#58a6ff}
@@ -161,9 +205,9 @@ app.get('/', (req, res) => {
         .desc-free-locked{color:#7f2020}
         .desc-inuse{color:#1e4a7a}
         .desc-waiting{color:#4a3080}
-        .unlock-timer{font-size:17px;font-weight:500;color:#fff;letter-spacing:-0.5px;margin-bottom:3px}
+        .unlock-timer{font-size:17px;font-weight:500;color:#fff;margin-bottom:3px}
         .unlock-sub{font-size:10px;color:#4b1111;margin-bottom:12px}
-        .view-btn{width:100%;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:none;background:#92400e;color:#fed7aa;margin-bottom:8px;text-decoration:none}
+        .view-btn{width:100%;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:none;background:#92400e;color:#fed7aa;text-decoration:none}
         .view-btn:hover{background:#a05213}
         .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 9px;font-size:12px;font-weight:700}
         .divider{height:1px;background:#1a1f2a;margin-bottom:20px}
@@ -189,16 +233,14 @@ app.get('/', (req, res) => {
 
         <div class="box ${poolLocked ? 'box-free-locked' : 'box-free'}">
             <div class="box-label ${poolLocked ? 'free-locked-col' : 'free-col'}">
-                ${poolLocked ? '&#128274; Free &mdash; Locked' : '&#10003; Free'}
+                ${poolLocked ? '&#128274; Free — Locked' : '&#10003; Free'}
             </div>
             <div class="box-num ${poolLocked ? 'num-free-locked' : 'num-free'}">${freeAccounts.length}</div>
             ${poolLocked ? `
                 <div class="box-desc desc-free-locked">${poolLockedReason}</div>
                 <div class="unlock-timer" id="unlock-countdown">--:--:--</div>
                 <div class="unlock-sub">Unlocks at 07:30</div>
-            ` : `
-                <div class="box-desc desc-free">Accounts ready</div>
-            `}
+            ` : `<div class="box-desc desc-free">Accounts ready</div>`}
             <a href="/view/free" class="view-btn">View <span class="view-count">${freeAccounts.length}</span></a>
         </div>
 
@@ -219,11 +261,9 @@ app.get('/', (req, res) => {
     </div>
 
     <div class="divider"></div>
-
     <button class="reset-btn" onclick="if(confirm('Reset all accounts to FREE and remove lock?')) fetch('/reset',{method:'POST'}).then(()=>location.reload())">
         &#8635; Reset all to free
     </button>
-
     <div class="footer">
         <span class="tick" id="tick">--:--:--</span>
         <span class="hint">Auto-refresh: 1ms</span>
@@ -254,7 +294,6 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-// --- VIEW PAGES ---
 app.get('/view/free', (req, res) => {
     const list = accounts.filter(a => a.status === 'FREE').map(a => a.phone);
     res.send(listPage('Free Accounts', list.length + ' accounts ready', list));
@@ -271,7 +310,6 @@ app.get('/view/waiting', (req, res) => {
     res.send(listPage('Waiting 24h', list.length + ' full accounts', list));
 });
 
-// --- API ENDPOINTS ---
 app.post('/request-login', (req, res) => {
     if (poolLocked) {
         return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
@@ -304,7 +342,6 @@ app.post('/logout', (req, res) => {
     if (account) {
         account.logoutTime = Date.now();
         account.logoutTimeStr = logoutTime;
-        console.log(`Account ${phone} logged out at ${logoutTime}`);
         return res.json({ success: true, message: `Account ${phone} logged out at ${logoutTime}. Will free after 24h.` });
     }
     return res.json({ success: false, error: "Account not found." });
