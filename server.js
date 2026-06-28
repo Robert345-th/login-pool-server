@@ -88,7 +88,6 @@ let poolLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
-// --- AUTO-FREE after 24h ---
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -98,22 +97,16 @@ setInterval(() => {
     });
 }, 60 * 1000);
 
-// --- LOCK CHECK: only locks at 50 accounts, unlocks at 07:30 ---
 setInterval(() => {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
-
-    // Auto-unlock at 07:30
     if (poolLocked && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE))) {
-        poolLocked = false;
-        poolLockedReason = '';
+        poolLocked = false; poolLockedReason = '';
         console.log('Pool unlocked at 07:30.');
         return;
     }
-
-    // Lock if free accounts hit exactly 50
     if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
         poolLocked = true;
         poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
@@ -131,6 +124,101 @@ app.get('/stats', (req, res) => {
         reason: poolLockedReason
     });
 });
+
+function waitingPage(rows) {
+    const rowsHtml = rows.length
+        ? rows.map((r, i) => `
+            <div class="row" data-phone="${r.phone}" data-freeat="${r.freeAt}">
+                <div class="row-num">${i + 1}.</div>
+                <div class="row-info">
+                    <div class="row-phone">${r.phone}</div>
+                    <div class="row-countdown" id="cd-${i}">calculating...</div>
+                </div>
+            </div>`).join('')
+        : `<div class="empty">No accounts</div>`;
+
+    const freeAtData = JSON.stringify(rows.map(r => ({ id: rows.indexOf(r), freeAt: r.freeAt })));
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <title>Waiting 24h</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
+        .page{background:#0d1117;border-radius:16px;width:100%;max-width:520px;margin:0 auto;overflow:hidden}
+        .page-header{padding:16px 20px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:12px}
+        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;text-decoration:none;white-space:nowrap}
+        .back-btn:hover{background:#21262d;color:#e6edf3}
+        .page-title{font-size:15px;font-weight:500;color:#e6edf3}
+        .page-subtitle{font-size:11px;color:#4b5563;margin-top:2px}
+        .search-wrap{padding:14px 20px;border-bottom:1px solid #21262d}
+        .search-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
+        .search-input:focus{border-color:#58a6ff}
+        .search-input::placeholder{color:#4b5563}
+        .row{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid #161b22;gap:10px}
+        .row:last-child{border-bottom:none}
+        .row-num{font-size:12px;color:#4b5563;width:26px;flex-shrink:0}
+        .row-info{flex:1;min-width:0}
+        .row-phone{font-size:14px;color:#e6edf3;font-weight:500}
+        .row-countdown{font-size:11px;color:#fbbf24;margin-top:3px}
+        .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
+        .hidden{display:none}
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="page-header">
+        <a href="/" class="back-btn">&#8592; Back</a>
+        <div>
+            <div class="page-title">Waiting 24h</div>
+            <div class="page-subtitle">${rows.length} full accounts</div>
+        </div>
+    </div>
+    <div class="search-wrap">
+        <input class="search-input" id="search" placeholder="&#128269; Search phone number..." oninput="filterRows(this.value)">
+    </div>
+    <div id="list">${rowsHtml}</div>
+</div>
+<script>
+    function pad(n){return String(n).padStart(2,'0')}
+
+    const data = ${freeAtData};
+
+    function updateCountdowns(){
+        const now = Date.now();
+        data.forEach(item => {
+            const el = document.getElementById('cd-'+item.id);
+            if(!el) return;
+            const diff = item.freeAt - now;
+            if(diff <= 0){
+                el.textContent = 'Ready to free';
+                el.style.color = '#3fb950';
+            } else {
+                const h = Math.floor(diff/3600000);
+                const m = Math.floor((diff%3600000)/60000);
+                const s = Math.floor((diff%60000)/1000);
+                el.textContent = 'Free in: '+h+'h '+pad(m)+'m '+pad(s)+'s';
+            }
+        });
+    }
+
+    function filterRows(q){
+        const rows = document.querySelectorAll('.row');
+        const query = q.trim().toLowerCase();
+        rows.forEach(row => {
+            const phone = row.getAttribute('data-phone') || '';
+            row.classList.toggle('hidden', query !== '' && !phone.toLowerCase().includes(query));
+        });
+    }
+
+    setInterval(updateCountdowns, 1);
+    updateCountdowns();
+</script>
+</body>
+</html>`;
+}
 
 function listPage(title, subtitle, rows, type) {
     const rowsHtml = rows.length
@@ -364,21 +452,18 @@ app.get('/', (req, res) => {
             </div>
             <a href="/view/free" class="view-btn">View <span class="view-count" id="cnt-free">${freeAccounts.length}</span></a>
         </div>
-
         <div class="box box-inuse">
             <div class="box-label inuse-col">&#9654; In use</div>
             <div class="box-num num-inuse" id="num-inuse">${inUseAccounts.length}</div>
             <div class="box-desc desc-inuse">Not yet logged out</div>
             <a href="/view/inuse" class="view-btn">View <span class="view-count" id="cnt-inuse">${inUseAccounts.length}</span></a>
         </div>
-
         <div class="box box-waiting">
             <div class="box-label waiting-col">&#9203; Waiting 24h</div>
             <div class="box-num num-waiting" id="num-waiting">${waitingAccounts.length}</div>
             <div class="box-desc desc-waiting">Full account</div>
             <a href="/view/waiting" class="view-btn">View <span class="view-count" id="cnt-waiting">${waitingAccounts.length}</span></a>
         </div>
-
         <div class="box box-bad">
             <div class="box-label bad-col">&#10060; Bad password</div>
             <div class="box-num num-bad" id="num-bad">${badPasswordAccounts.length}</div>
@@ -409,7 +494,6 @@ app.get('/', (req, res) => {
 
 <script>
     function pad(n){return String(n).padStart(2,'0')}
-
     function update(){
         const now=new Date();
         document.getElementById('tick').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
@@ -421,7 +505,6 @@ app.get('/', (req, res) => {
             cd.textContent=Math.floor(diff/3600000)+'h '+pad(Math.floor((diff%3600000)/60000))+'m '+pad(Math.floor((diff%60000)/1000))+'s';
         }
     }
-
     function refreshStats(){
         fetch('/stats').then(r=>r.json()).then(d=>{
             document.getElementById('num-free').textContent=d.free;
@@ -432,17 +515,14 @@ app.get('/', (req, res) => {
             document.getElementById('cnt-inuse').textContent=d.inUse;
             document.getElementById('cnt-waiting').textContent=d.waiting;
             document.getElementById('cnt-bad').textContent=d.badPassword;
-
             const pill=document.getElementById('pill');
             pill.className=d.locked?'locked-pill':'live-pill';
             pill.innerHTML=d.locked?'<div class="lock-dot"></div> Locked':'<div class="live-dot"></div> Live';
-
             const freeBox=document.getElementById('free-box');
             const freeLabel=document.getElementById('free-label');
             const freeNum=document.getElementById('num-free');
             const freeDesc=document.getElementById('free-desc');
             const unlockBlock=document.getElementById('unlock-block');
-
             if(d.locked){
                 freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
                 freeLabel.style.color='#f87171'; freeLabel.innerHTML='&#128274; Free — Locked';
@@ -458,14 +538,12 @@ app.get('/', (req, res) => {
             }
         }).catch(()=>{});
     }
-
     function showMsg(text,ok){
         const el=document.getElementById('add-msg');
         el.textContent=text; el.className='msg '+(ok?'msg-ok':'msg-err');
         el.style.display='block';
         setTimeout(()=>el.style.display='none',3000);
     }
-
     function addAccount(){
         const phone=document.getElementById('inp-phone').value.trim();
         const password=document.getElementById('inp-pass').value.trim();
@@ -480,7 +558,6 @@ app.get('/', (req, res) => {
             } else { showMsg(d.error,false); }
         });
     }
-
     setInterval(update,1);
     setInterval(refreshStats,1000);
     update(); refreshStats();
@@ -500,9 +577,13 @@ app.get('/view/inuse', (req, res) => {
 });
 
 app.get('/view/waiting', (req, res) => {
-    const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
-        .map(a => ({ phone: a.phone, display: a.phone + '  —  out at ' + (a.logoutTimeStr || 'N/A'), password: '' }));
-    res.send(listPage('Waiting 24h', list.length + ' full accounts', list, 'waiting'));
+    const list = accounts
+        .filter(a => a.status === 'IN-USE' && a.logoutTime)
+        .map(a => ({
+            phone: a.phone,
+            freeAt: a.logoutTime + TWENTY_FOUR_HOURS_MS
+        }));
+    res.send(waitingPage(list));
 });
 
 app.get('/view/bad', (req, res) => {
@@ -518,7 +599,6 @@ app.post('/wrong-password', (req, res) => {
     const acc = index !== -1 ? accounts.splice(index, 1)[0] : { phone, password: 'unknown' };
     if (!badPasswordAccounts.find(a => a.phone === phone)) {
         badPasswordAccounts.push({ phone: acc.phone, password: acc.password, reportedAt: timeStr, status: 'BAD_PASSWORD' });
-        console.log(`Bad password account: ${phone} at ${timeStr}`);
     }
     res.json({ success: true });
 });
@@ -595,4 +675,4 @@ app.post('/reset', (req, res) => {
     res.json({ success: true });
 });
 
-app.listen(PORT, () => console.log(`Pool Manager active on port ${PORT}`));
+app.listen(PORT, () => console.env && console.log(`Pool Manager active on port ${PORT}`));
