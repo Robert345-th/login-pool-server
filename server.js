@@ -111,14 +111,25 @@ setInterval(() => {
     if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) { poolLocked = true; poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`; }
 }, 10 * 1000);
 
-function listPage(title, subtitle, rows, showDelete = false) {
+// --- STATS ENDPOINT ---
+app.get('/stats', (req, res) => {
+    res.json({
+        free: accounts.filter(a => a.status === 'FREE').length,
+        inUse: accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime).length,
+        waiting: accounts.filter(a => a.status === 'IN-USE' && a.logoutTime).length,
+        locked: poolLocked,
+        reason: poolLockedReason
+    });
+});
+
+function listPage(title, subtitle, rows) {
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
             <div style="display:flex;align-items:center;padding:14px 24px;border-bottom:1px solid #161b22;gap:12px;">
                 <div style="font-size:13px;color:#4b5563;width:28px;flex-shrink:0;">${i + 1}.</div>
                 <div style="font-size:15px;color:#e6edf3;font-weight:500;flex:1;">${r.phone}</div>
-                <div style="font-size:12px;color:#4b5563;">${r.password}</div>
-                ${showDelete ? `<button onclick="removeAccount('${r.phone}')" style="background:#2d0a0a;border:1px solid #7f1d1d;color:#f87171;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;">Remove</button>` : ''}
+                <div style="font-size:12px;color:#4b5563;margin-right:8px;">${r.password}</div>
+                <button onclick="removeAccount('${r.phone}')" style="background:#2d0a0a;border:1px solid #7f1d1d;color:#f87171;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;">Remove</button>
             </div>`).join('')
         : `<div style="padding:40px 24px;text-align:center;color:#4b5563;font-size:13px;">No accounts</div>`;
 
@@ -144,21 +155,21 @@ function listPage(title, subtitle, rows, showDelete = false) {
         <a href="/" class="back-btn">&#8592; Back</a>
         <div>
             <div class="page-title">${title}</div>
-            <div class="page-subtitle">${subtitle}</div>
+            <div class="page-subtitle" id="sub">${subtitle}</div>
         </div>
     </div>
-    ${rowsHtml}
+    <div id="list">${rowsHtml}</div>
 </div>
 <script>
     function removeAccount(phone){
         if(!confirm('Remove account ' + phone + '?')) return;
-        fetch('/remove-account', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({phone})
-        }).then(r => r.json()).then(d => {
+        fetch('/remove-account',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({phone})
+        }).then(r=>r.json()).then(d=>{
             if(d.success) location.reload();
-            else alert('Error: ' + d.error);
+            else alert('Error: '+d.error);
         });
     }
 </script>
@@ -237,36 +248,36 @@ app.get('/', (req, res) => {
 <div class="db">
     <div class="top-bar">
         <div class="db-title">&#128274; Login pool manager</div>
-        ${poolLocked
-            ? `<div class="locked-pill"><div class="lock-dot"></div> Locked</div>`
-            : `<div class="live-pill"><div class="live-dot"></div> Live</div>`
-        }
+        <div id="pill" class="${poolLocked ? 'locked-pill' : 'live-pill'}">
+            <div class="${poolLocked ? 'lock-dot' : 'live-dot'}"></div>
+            ${poolLocked ? 'Locked' : 'Live'}
+        </div>
     </div>
 
     <div class="three-boxes">
-        <div class="box ${poolLocked ? 'box-free-locked' : 'box-free'}">
-            <div class="box-label ${poolLocked ? 'free-locked-col' : 'free-col'}">
-                ${poolLocked ? '&#128274; Free — Locked' : '&#10003; Free'}
-            </div>
-            <div class="box-num ${poolLocked ? 'num-free-locked' : 'num-free'}">${freeAccounts.length}</div>
-            ${poolLocked ? `
-                <div class="box-desc desc-free-locked">${poolLockedReason}</div>
+        <div class="box" id="free-box" style="${poolLocked ? 'background:#1a0a0a;border:1.5px solid #7f1d1d;' : 'background:#0a1a0f;border:1.5px solid #1a4a27;'}border-radius:16px;padding:22px 18px 18px;display:flex;flex-direction:column;min-width:0;">
+            <div class="box-label" id="free-label" style="color:${poolLocked ? '#f87171' : '#3fb950'}">${poolLocked ? '&#128274; Free — Locked' : '&#10003; Free'}</div>
+            <div class="box-num" id="num-free" style="color:${poolLocked ? '#f87171' : '#3fb950'};font-size:64px;font-weight:500;line-height:1;letter-spacing:-3px;margin-bottom:8px;">${freeAccounts.length}</div>
+            <div class="box-desc" id="free-desc" style="color:${poolLocked ? '#7f2020' : '#2a6e3a'};font-size:11px;margin-bottom:16px;flex:1;">${poolLocked ? poolLockedReason : 'Accounts ready'}</div>
+            <div id="unlock-block" style="display:${poolLocked ? 'block' : 'none'};">
                 <div class="unlock-timer" id="unlock-countdown">--:--:--</div>
                 <div class="unlock-sub">Unlocks at 07:30</div>
-            ` : `<div class="box-desc desc-free">Accounts ready</div>`}
-            <a href="/view/free" class="view-btn">View <span class="view-count">${freeAccounts.length}</span></a>
+            </div>
+            <a href="/view/free" class="view-btn">View <span class="view-count" id="cnt-free">${freeAccounts.length}</span></a>
         </div>
+
         <div class="box box-inuse">
             <div class="box-label inuse-col">&#9654; In use</div>
-            <div class="box-num num-inuse">${inUseAccounts.length}</div>
+            <div class="box-num num-inuse" id="num-inuse">${inUseAccounts.length}</div>
             <div class="box-desc desc-inuse">Not yet logged out</div>
-            <a href="/view/inuse" class="view-btn">View <span class="view-count">${inUseAccounts.length}</span></a>
+            <a href="/view/inuse" class="view-btn">View <span class="view-count" id="cnt-inuse">${inUseAccounts.length}</span></a>
         </div>
+
         <div class="box box-waiting">
             <div class="box-label waiting-col">&#9203; Waiting 24h</div>
-            <div class="box-num num-waiting">${waitingAccounts.length}</div>
+            <div class="box-num num-waiting" id="num-waiting">${waitingAccounts.length}</div>
             <div class="box-desc desc-waiting">Full account</div>
-            <a href="/view/waiting" class="view-btn">View <span class="view-count">${waitingAccounts.length}</span></a>
+            <a href="/view/waiting" class="view-btn">View <span class="view-count" id="cnt-waiting">${waitingAccounts.length}</span></a>
         </div>
     </div>
 
@@ -286,12 +297,13 @@ app.get('/', (req, res) => {
     </button>
     <div class="footer">
         <span class="tick" id="tick">--:--:--</span>
-        <span class="hint">Auto-refresh: 1ms</span>
+        <span class="hint">Live data</span>
     </div>
 </div>
 
 <script>
     function pad(n){return String(n).padStart(2,'0')}
+
     function update(){
         const now=new Date();
         document.getElementById('tick').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
@@ -303,34 +315,85 @@ app.get('/', (req, res) => {
             cd.textContent=Math.floor(diff/3600000)+'h '+pad(Math.floor((diff%3600000)/60000))+'m '+pad(Math.floor((diff%60000)/1000))+'s';
         }
     }
+
+    function refreshStats(){
+        fetch('/stats')
+        .then(r=>r.json())
+        .then(d=>{
+            document.getElementById('num-free').textContent=d.free;
+            document.getElementById('num-inuse').textContent=d.inUse;
+            document.getElementById('num-waiting').textContent=d.waiting;
+            document.getElementById('cnt-free').textContent=d.free;
+            document.getElementById('cnt-inuse').textContent=d.inUse;
+            document.getElementById('cnt-waiting').textContent=d.waiting;
+
+            const pill=document.getElementById('pill');
+            pill.className=d.locked?'locked-pill':'live-pill';
+            pill.innerHTML=d.locked
+                ?'<div class="lock-dot"></div> Locked'
+                :'<div class="live-dot"></div> Live';
+
+            const freeBox=document.getElementById('free-box');
+            const freeLabel=document.getElementById('free-label');
+            const freeNum=document.getElementById('num-free');
+            const freeDesc=document.getElementById('free-desc');
+            const unlockBlock=document.getElementById('unlock-block');
+
+            if(d.locked){
+                freeBox.style.background='#1a0a0a';
+                freeBox.style.border='1.5px solid #7f1d1d';
+                freeLabel.style.color='#f87171';
+                freeLabel.innerHTML='&#128274; Free — Locked';
+                freeNum.style.color='#f87171';
+                freeDesc.style.color='#7f2020';
+                freeDesc.textContent=d.reason;
+                unlockBlock.style.display='block';
+            } else {
+                freeBox.style.background='#0a1a0f';
+                freeBox.style.border='1.5px solid #1a4a27';
+                freeLabel.style.color='#3fb950';
+                freeLabel.innerHTML='&#10003; Free';
+                freeNum.style.color='#3fb950';
+                freeDesc.style.color='#2a6e3a';
+                freeDesc.textContent='Accounts ready';
+                unlockBlock.style.display='none';
+            }
+        })
+        .catch(()=>{});
+    }
+
     function showMsg(text, ok){
         const el=document.getElementById('add-msg');
         el.textContent=text;
         el.className='msg '+(ok?'msg-ok':'msg-err');
         el.style.display='block';
-        setTimeout(()=>el.style.display='none', 3000);
+        setTimeout(()=>el.style.display='none',3000);
     }
+
     function addAccount(){
         const phone=document.getElementById('inp-phone').value.trim();
         const password=document.getElementById('inp-pass').value.trim();
-        if(!phone||!password){ showMsg('Phone and password required', false); return; }
+        if(!phone||!password){showMsg('Phone and password required',false);return;}
         fetch('/add-account',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({phone,password})
         }).then(r=>r.json()).then(d=>{
             if(d.success){
-                showMsg('Account '+phone+' added!', true);
+                showMsg('Account '+phone+' added!',true);
                 document.getElementById('inp-phone').value='';
                 document.getElementById('inp-pass').value='';
-                setTimeout(()=>location.reload(), 1000);
+                refreshStats();
             } else {
-                showMsg(d.error, false);
+                showMsg(d.error,false);
             }
         });
     }
-    setInterval(update,1); update();
-    setInterval(()=>location.reload(),5000);
+
+    setInterval(update,1);
+    setInterval(refreshStats,1000);
+    update();
+    refreshStats();
 </script>
 </body>
 </html>`);
@@ -338,17 +401,18 @@ app.get('/', (req, res) => {
 
 app.get('/view/free', (req, res) => {
     const list = accounts.filter(a => a.status === 'FREE');
-    res.send(listPage('Free Accounts', list.length + ' accounts ready', list, true));
+    res.send(listPage('Free Accounts', list.length + ' accounts ready', list));
 });
 
 app.get('/view/inuse', (req, res) => {
     const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
-    res.send(listPage('In Use', list.length + ' not yet logged out', list, true));
+    res.send(listPage('In Use', list.length + ' not yet logged out', list));
 });
 
 app.get('/view/waiting', (req, res) => {
-    const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime);
-    res.send(listPage('Waiting 24h', list.length + ' full accounts', list, true));
+    const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
+        .map(a => ({ phone: a.phone + '  —  out at ' + (a.logoutTimeStr || 'N/A'), password: '' }));
+    res.send(listPage('Waiting 24h', list.length + ' full accounts', list));
 });
 
 app.post('/add-account', (req, res) => {
