@@ -75,7 +75,6 @@ let accounts = [
     { phone: "574604175", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
 ];
 
-// Separate list for bad password accounts
 let badPasswordAccounts = [];
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
@@ -134,7 +133,7 @@ function listPage(title, subtitle, rows, type) {
                     ${r.password ? `<div class="row-pass">${r.password}</div>` : ''}
                     ${r.reportedAt ? `<div class="row-time">&#9888; Reported at ${r.reportedAt}</div>` : ''}
                 </div>
-                <button class="rm-btn" onclick="removeAccount('${r.phone}')">Remove</button>
+                ${type === 'free' || type === 'bad' ? `<button class="rm-btn" onclick="removeAccount('${r.phone}')">Remove</button>` : ''}
             </div>`).join('')
         : `<div class="empty">No accounts</div>`;
 
@@ -506,10 +505,8 @@ app.post('/wrong-password', (req, res) => {
     if (!phone) return res.json({ success: false, error: 'Phone required.' });
     const now = new Date();
     const timeStr = pad(now.getHours()) + ':' + pad(now.getMinutes());
-    // Remove from main accounts
     const index = accounts.findIndex(a => a.phone === phone);
     const acc = index !== -1 ? accounts.splice(index, 1)[0] : { phone, password: 'unknown' };
-    // Add to bad password list if not already there
     if (!badPasswordAccounts.find(a => a.phone === phone)) {
         badPasswordAccounts.push({ phone: acc.phone, password: acc.password, reportedAt: timeStr, status: 'BAD_PASSWORD' });
         console.log(`Bad password account: ${phone} at ${timeStr}`);
