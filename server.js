@@ -12,67 +12,67 @@ app.use((req, res, next) => {
 });
 
 let accounts = [
-    { phone: "574623467", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "777263261", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574960432", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574040623", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574623403", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574576605", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574604316", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574219917", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574238215", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "778227919", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574555706", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "573164297", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574138374", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574559302", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574153025", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "779171327", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574084958", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574641548", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574641543", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574940273", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "778301604", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574976516", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574638143", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "779171438", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574987429", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574607021", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574238234", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574219916", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574153094", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574987395", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574203227", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574191028", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574976555", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "770942244", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574076004", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574219728", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "573213942", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574238217", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574048581", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574145023", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574219788", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574153033", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574219794", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574111345", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574084951", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "778228223", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "955216051", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "953583623", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "750054275", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "953659386", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574604324", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574153024", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574555717", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574939954", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574576734", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "573271807", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574015146", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574125189", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "573507265", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574195197", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
-    { phone: "574604175", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null },
+    { phone: "574623467", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "777263261", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574960432", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574040623", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574623403", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574576605", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574604316", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574219917", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574238215", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "778227919", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574555706", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "573164297", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574138374", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574559302", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574153025", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "779171327", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574084958", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574641548", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574641543", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574940273", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "778301604", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574976516", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574638143", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "779171438", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574987429", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574607021", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574238234", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574219916", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574153094", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574987395", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574203227", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574191028", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574976555", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "770942244", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574076004", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574219728", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "573213942", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574238217", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574048581", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574145023", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574219788", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574153033", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574219794", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574111345", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574084951", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "778228223", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "955216051", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "953583623", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "750054275", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "953659386", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574604324", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574153024", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574555717", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574939954", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574576734", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "573271807", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574015146", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574125189", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "573507265", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574195197", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
+    { phone: "574604175", password: "R0978012009", status: "FREE", logoutTime: null, logoutTimeStr: null, lastHeartbeat: null },
 ];
 
 let badPasswordAccounts = [];
@@ -82,21 +82,40 @@ const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
 const UNLOCK_HOUR = 7;
 const UNLOCK_MINUTE = 30;
 const REMOVE_PASSWORD = '1234';
+const HEARTBEAT_TIMEOUT_MS = 60 * 1000; // 1 minute
 
 let poolLocked = false;
 let poolLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
+// --- AUTO-FREE after 24h ---
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
         if (acc.status === 'IN-USE' && acc.logoutTime && (now - acc.logoutTime >= TWENTY_FOUR_HOURS_MS)) {
-            acc.status = 'FREE'; acc.logoutTime = null; acc.logoutTimeStr = null;
+            acc.status = 'FREE'; acc.logoutTime = null; acc.logoutTimeStr = null; acc.lastHeartbeat = null;
         }
     });
 }, 60 * 1000);
 
+// --- HEARTBEAT CHECKER: runs every 15 seconds ---
+setInterval(() => {
+    const now = Date.now();
+    accounts.forEach(acc => {
+        if (acc.status === 'IN-USE' && !acc.logoutTime && acc.lastHeartbeat) {
+            const elapsed = now - acc.lastHeartbeat;
+            if (elapsed > HEARTBEAT_TIMEOUT_MS) {
+                const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                console.log(`Heartbeat lost for ${acc.phone} (${Math.round(elapsed/1000)}s). Moving to waiting.`);
+                acc.logoutTime = Date.now();
+                acc.logoutTimeStr = timeStr + ' (tab closed)';
+            }
+        }
+    });
+}, 15 * 1000);
+
+// --- LOCK CHECK ---
 setInterval(() => {
     const now = new Date();
     const hour = now.getHours();
@@ -125,6 +144,17 @@ app.get('/stats', (req, res) => {
     });
 });
 
+// --- HEARTBEAT ENDPOINT ---
+app.post('/heartbeat', (req, res) => {
+    const { phone } = req.body;
+    const account = accounts.find(a => a.phone === phone);
+    if (account && account.status === 'IN-USE') {
+        account.lastHeartbeat = Date.now();
+        return res.json({ success: true });
+    }
+    res.json({ success: false, error: 'Account not found or not in use.' });
+});
+
 function waitingPage(rows) {
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
@@ -133,11 +163,12 @@ function waitingPage(rows) {
                 <div class="row-info">
                     <div class="row-phone">${r.phone}</div>
                     <div class="row-countdown" id="cd-${i}">calculating...</div>
+                    ${r.logoutTimeStr ? `<div class="row-note">${r.logoutTimeStr}</div>` : ''}
                 </div>
             </div>`).join('')
         : `<div class="empty">No accounts</div>`;
 
-    const freeAtData = JSON.stringify(rows.map(r => ({ id: rows.indexOf(r), freeAt: r.freeAt })));
+    const freeAtData = JSON.stringify(rows.map((r, i) => ({ id: i, freeAt: r.freeAt })));
 
     return `<!DOCTYPE html>
 <html>
@@ -163,6 +194,7 @@ function waitingPage(rows) {
         .row-info{flex:1;min-width:0}
         .row-phone{font-size:14px;color:#e6edf3;font-weight:500}
         .row-countdown{font-size:11px;color:#fbbf24;margin-top:3px}
+        .row-note{font-size:10px;color:#4b5563;margin-top:2px}
         .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
         .hidden{display:none}
     </style>
@@ -183,9 +215,7 @@ function waitingPage(rows) {
 </div>
 <script>
     function pad(n){return String(n).padStart(2,'0')}
-
     const data = ${freeAtData};
-
     function updateCountdowns(){
         const now = Date.now();
         data.forEach(item => {
@@ -203,7 +233,6 @@ function waitingPage(rows) {
             }
         });
     }
-
     function filterRows(q){
         const rows = document.querySelectorAll('.row');
         const query = q.trim().toLowerCase();
@@ -212,7 +241,6 @@ function waitingPage(rows) {
             row.classList.toggle('hidden', query !== '' && !phone.toLowerCase().includes(query));
         });
     }
-
     setInterval(updateCountdowns, 1);
     updateCountdowns();
 </script>
@@ -307,7 +335,6 @@ function listPage(title, subtitle, rows, type) {
 <script>
     let pendingPhone = null;
     const listType = '${type}';
-
     function removeAccount(phone){
         pendingPhone = phone;
         document.getElementById('pin-input').value='';
@@ -315,12 +342,10 @@ function listPage(title, subtitle, rows, type) {
         document.getElementById('pin-modal').style.display='flex';
         setTimeout(()=>document.getElementById('pin-input').focus(),100);
     }
-
     function closePin(){
         pendingPhone = null;
         document.getElementById('pin-modal').style.display='none';
     }
-
     function confirmRemove(){
         const pin = document.getElementById('pin-input').value.trim();
         if(pin !== '1234'){
@@ -329,33 +354,28 @@ function listPage(title, subtitle, rows, type) {
             return;
         }
         const endpoint = listType === 'bad' ? '/remove-bad-password' : '/remove-account';
-        fetch(endpoint,{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({phone: pendingPhone, pin})
-        }).then(r=>r.json()).then(d=>{
+        fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:pendingPhone,pin})})
+        .then(r=>r.json()).then(d=>{
             if(d.success){
                 closePin();
-                const row = document.querySelector('[data-phone="'+pendingPhone+'"]');
+                const row=document.querySelector('[data-phone="'+pendingPhone+'"]');
                 if(row) row.remove();
             } else {
-                document.getElementById('pin-err').textContent = d.error || 'Error';
+                document.getElementById('pin-err').textContent=d.error||'Error';
                 document.getElementById('pin-err').style.display='block';
             }
         });
     }
-
-    document.getElementById('pin-input').addEventListener('keydown', e => {
+    document.getElementById('pin-input').addEventListener('keydown',e=>{
         if(e.key==='Enter') confirmRemove();
         if(e.key==='Escape') closePin();
     });
-
     function filterRows(q){
-        const rows = document.querySelectorAll('.row');
-        const query = q.trim().toLowerCase();
-        rows.forEach(row => {
-            const phone = row.getAttribute('data-phone') || '';
-            row.classList.toggle('hidden', query !== '' && !phone.toLowerCase().includes(query));
+        const rows=document.querySelectorAll('.row');
+        const query=q.trim().toLowerCase();
+        rows.forEach(row=>{
+            const phone=row.getAttribute('data-phone')||'';
+            row.classList.toggle('hidden',query!==''&&!phone.toLowerCase().includes(query));
         });
     }
 </script>
@@ -440,7 +460,6 @@ app.get('/', (req, res) => {
             ${poolLocked ? 'Locked' : 'Live'}
         </div>
     </div>
-
     <div class="four-boxes">
         <div class="box box-free" id="free-box">
             <div class="box-label free-col" id="free-label">&#10003; Free</div>
@@ -471,7 +490,6 @@ app.get('/', (req, res) => {
             <a href="/view/bad" class="view-btn">View <span class="view-count" id="cnt-bad">${badPasswordAccounts.length}</span></a>
         </div>
     </div>
-
     <div class="add-box">
         <div class="add-title">&#43; Add account</div>
         <div class="add-row">
@@ -481,7 +499,6 @@ app.get('/', (req, res) => {
         </div>
         <div class="msg" id="add-msg"></div>
     </div>
-
     <div class="divider"></div>
     <button class="reset-btn" onclick="if(confirm('Reset all accounts to FREE and remove lock?')) fetch('/reset',{method:'POST'}).then(()=>location.reload())">
         &#8635; Reset all to free
@@ -491,16 +508,15 @@ app.get('/', (req, res) => {
         <span class="hint">Live data</span>
     </div>
 </div>
-
 <script>
     function pad(n){return String(n).padStart(2,'0')}
     function update(){
         const now=new Date();
         document.getElementById('tick').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
         const cd=document.getElementById('unlock-countdown');
-        if(cd && document.getElementById('unlock-block').style.display!=='none'){
-            const unlock=new Date(); unlock.setHours(7,30,0,0);
-            if(unlock<=now) unlock.setDate(unlock.getDate()+1);
+        if(cd&&document.getElementById('unlock-block').style.display!=='none'){
+            const unlock=new Date();unlock.setHours(7,30,0,0);
+            if(unlock<=now)unlock.setDate(unlock.getDate()+1);
             const diff=unlock-now;
             cd.textContent=Math.floor(diff/3600000)+'h '+pad(Math.floor((diff%3600000)/60000))+'m '+pad(Math.floor((diff%60000)/1000))+'s';
         }
@@ -525,22 +541,22 @@ app.get('/', (req, res) => {
             const unlockBlock=document.getElementById('unlock-block');
             if(d.locked){
                 freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
-                freeLabel.style.color='#f87171'; freeLabel.innerHTML='&#128274; Free — Locked';
+                freeLabel.style.color='#f87171';freeLabel.innerHTML='&#128274; Free — Locked';
                 freeNum.style.color='#f87171';
-                freeDesc.style.color='#7f2020'; freeDesc.textContent=d.reason;
+                freeDesc.style.color='#7f2020';freeDesc.textContent=d.reason;
                 unlockBlock.style.display='block';
             } else {
                 freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
-                freeLabel.style.color='#3fb950'; freeLabel.innerHTML='&#10003; Free';
+                freeLabel.style.color='#3fb950';freeLabel.innerHTML='&#10003; Free';
                 freeNum.style.color='#3fb950';
-                freeDesc.style.color='#2a6e3a'; freeDesc.textContent='Accounts ready';
+                freeDesc.style.color='#2a6e3a';freeDesc.textContent='Accounts ready';
                 unlockBlock.style.display='none';
             }
         }).catch(()=>{});
     }
     function showMsg(text,ok){
         const el=document.getElementById('add-msg');
-        el.textContent=text; el.className='msg '+(ok?'msg-ok':'msg-err');
+        el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');
         el.style.display='block';
         setTimeout(()=>el.style.display='none',3000);
     }
@@ -555,12 +571,12 @@ app.get('/', (req, res) => {
                 document.getElementById('inp-phone').value='';
                 document.getElementById('inp-pass').value='';
                 refreshStats();
-            } else { showMsg(d.error,false); }
+            } else {showMsg(d.error,false);}
         });
     }
     setInterval(update,1);
     setInterval(refreshStats,1000);
-    update(); refreshStats();
+    update();refreshStats();
 </script>
 </body>
 </html>`);
@@ -581,13 +597,24 @@ app.get('/view/waiting', (req, res) => {
         .filter(a => a.status === 'IN-USE' && a.logoutTime)
         .map(a => ({
             phone: a.phone,
-            freeAt: a.logoutTime + TWENTY_FOUR_HOURS_MS
+            freeAt: a.logoutTime + TWENTY_FOUR_HOURS_MS,
+            logoutTimeStr: a.logoutTimeStr
         }));
     res.send(waitingPage(list));
 });
 
 app.get('/view/bad', (req, res) => {
     res.send(listPage('Bad Password', badPasswordAccounts.length + ' accounts with wrong password', badPasswordAccounts, 'bad'));
+});
+
+app.post('/heartbeat', (req, res) => {
+    const { phone } = req.body;
+    const account = accounts.find(a => a.phone === phone);
+    if (account && account.status === 'IN-USE') {
+        account.lastHeartbeat = Date.now();
+        return res.json({ success: true });
+    }
+    res.json({ success: false, error: 'Account not found or not in use.' });
 });
 
 app.post('/wrong-password', (req, res) => {
@@ -607,7 +634,7 @@ app.post('/add-account', (req, res) => {
     const { phone, password } = req.body;
     if (!phone || !password) return res.json({ success: false, error: 'Phone and password required.' });
     if (accounts.find(a => a.phone === phone)) return res.json({ success: false, error: 'Account already exists.' });
-    accounts.push({ phone, password, status: 'FREE', logoutTime: null, logoutTimeStr: null });
+    accounts.push({ phone, password, status: 'FREE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: null });
     res.json({ success: true });
 });
 
@@ -633,7 +660,10 @@ app.post('/request-login', (req, res) => {
     if (poolLocked) return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
     const availableAccount = accounts.find(acc => acc.status === 'FREE');
     if (availableAccount) {
-        availableAccount.status = 'IN-USE'; availableAccount.logoutTime = null; availableAccount.logoutTimeStr = null;
+        availableAccount.status = 'IN-USE';
+        availableAccount.logoutTime = null;
+        availableAccount.logoutTimeStr = null;
+        availableAccount.lastHeartbeat = Date.now();
         return res.json({ success: true, phone: availableAccount.phone, password: availableAccount.password });
     }
     return res.json({ success: false, error: "No free accounts available" });
@@ -643,7 +673,10 @@ app.post('/login', (req, res) => {
     const { phone } = req.body;
     const account = accounts.find(acc => acc.phone === phone);
     if (account && account.status === 'FREE') {
-        account.status = 'IN-USE'; account.logoutTime = null; account.logoutTimeStr = null;
+        account.status = 'IN-USE';
+        account.logoutTime = null;
+        account.logoutTimeStr = null;
+        account.lastHeartbeat = Date.now();
         return res.json({ success: true, message: `Account ${phone} marked as logged in.` });
     }
     return res.json({ success: false, error: "Account not available or already in use." });
@@ -653,7 +686,9 @@ app.post('/logout', (req, res) => {
     const { phone, logoutTime } = req.body;
     const account = accounts.find(acc => acc.phone === phone);
     if (account) {
-        account.logoutTime = Date.now(); account.logoutTimeStr = logoutTime;
+        account.logoutTime = Date.now();
+        account.logoutTimeStr = logoutTime;
+        account.lastHeartbeat = null;
         return res.json({ success: true, message: `Account ${phone} logged out at ${logoutTime}. Will free after 24h.` });
     }
     return res.json({ success: false, error: "Account not found." });
@@ -670,9 +705,12 @@ app.post('/aviator-lock', (req, res) => {
 });
 
 app.post('/reset', (req, res) => {
-    accounts.forEach(acc => { acc.status = 'FREE'; acc.logoutTime = null; acc.logoutTimeStr = null; });
+    accounts.forEach(acc => {
+        acc.status = 'FREE'; acc.logoutTime = null;
+        acc.logoutTimeStr = null; acc.lastHeartbeat = null;
+    });
     poolLocked = false; poolLockedReason = '';
     res.json({ success: true });
 });
 
-app.listen(PORT, () => console.env && console.log(`Pool Manager active on port ${PORT}`));
+app.listen(PORT, () => console.log(`Pool Manager active on port ${PORT}`));
