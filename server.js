@@ -68,26 +68,23 @@ setInterval(async () => {
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
 
-    // Unlock at 07:30
-    if (poolLocked && hour < 18 && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE))) {
-        poolLocked = false; poolLockedReason = '';
-        console.log('Pool unlocked at 07:30.');
-        return;
-    }
+    // Determine if we should be locked right now
+    const isNightTime = hour >= 18 || hour < UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute < UNLOCK_MINUTE);
+    const isLowAccounts = freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD;
 
-    // Lock at 18:00
-    if (!poolLocked && hour >= 18) {
-        poolLocked = true;
-        poolLockedReason = 'Locked at 18:00. Unlocks at 07:30.';
-        console.log(poolLockedReason);
-        return;
-    }
-
-    // Lock when free accounts hit threshold
-    if (!poolLocked && freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD) {
-        poolLocked = true;
-        poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
-        console.log(poolLockedReason);
+    if (isNightTime || isLowAccounts) {
+        if (!poolLocked) {
+            poolLocked = true;
+            poolLockedReason = isNightTime
+                ? 'Locked at 18:00. Unlocks at 07:30.'
+                : `Free accounts reached ${freeCount}. Locked until 07:30.`;
+            console.log(poolLockedReason);
+        }
+    } else {
+        if (poolLocked) {
+            poolLocked = false; poolLockedReason = '';
+            console.log('Pool unlocked at 07:30.');
+        }
     }
 }, 10 * 1000);
 
