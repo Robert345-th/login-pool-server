@@ -684,7 +684,7 @@ app.get('/', (req, res) => {
         .msg{font-size:12px;margin-top:10px;padding:8px 12px;border-radius:6px;display:none}
         .msg-ok{background:#0d4429;color:#3fb950}.msg-err{background:#4b1111;color:#f87171}
         @media(max-width:600px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:44px}}
-        @media(max-width:400px){.four-boxes{grid-template-columns:1fr}}
+        @media(max-width:400px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:36px}}
         .alert-banner{display:none;background:#1a0a0a;border:1.5px solid #f87171;border-radius:14px;padding:14px 20px;margin-bottom:20px;align-items:center;gap:14px;animation:pulse 1.5s infinite}
         .alert-banner.show{display:flex}
         @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.4)}70%{box-shadow:0 0 0 10px rgba(248,113,113,0)}}
@@ -815,7 +815,7 @@ app.get('/', (req, res) => {
     }
     setInterval(update,1);setInterval(refreshStats,1000);update();refreshStats();
 
-    // In-use alert logic: 08:00-17:00 only, trigger if below 45 for 10 minutes
+    // In-use alert logic: 08:00-17:00 only
     let alertTimer=null;
     let alertTriggered=false;
     let alertDismissed=false;
@@ -836,21 +836,22 @@ app.get('/', (req, res) => {
         }
         if(inUseCount<45){
             if(!alertTimer&&!alertTriggered){
+                const delay=inUseCount===0?60000:600000;
                 alertTimer=setTimeout(()=>{
                     alertTriggered=true;
                     alertTimer=null;
                     if(!alertDismissed){
                         if(lastInUseCount===0){
-                            document.getElementById('alert-title').textContent='Go and login the account, it\'s time to workk!';
+                            document.getElementById('alert-title').textContent='🖥️ Go and turn on your computer, it\'s time to work!';
                             document.getElementById('alert-sub').textContent='There are no accounts in use right now.';
                         } else {
                             const missing=45-lastInUseCount;
-                            document.getElementById('alert-title').textContent='&#128680; Alert — In Use dropped below 45!';
+                            document.getElementById('alert-title').textContent='🚨 Alert — In Use dropped below 45!';
                             document.getElementById('alert-sub').textContent='Something happened to your '+missing+' tabs — go and check!';
                         }
                         document.getElementById('alert-banner').classList.add('show');
                     }
-                },600000);
+                },delay);
             }
         } else {
             if(alertTimer){clearTimeout(alertTimer);alertTimer=null;}
