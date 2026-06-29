@@ -770,51 +770,6 @@ app.get('/', (req, res) => {
             cd.textContent=Math.floor(diff/3600000)+'h '+pad(Math.floor((diff%3600000)/60000))+'m '+pad(Math.floor((diff%60000)/1000))+'s';
         }
     }
-    function refreshStats(){
-        fetch('/stats').then(r=>r.json()).then(d=>{
-            document.getElementById('num-free').textContent=d.free;
-            document.getElementById('num-inuse').textContent=d.inUse;
-            document.getElementById('num-waiting').textContent=d.waiting;
-            document.getElementById('num-bad').textContent=d.badPassword;
-            document.getElementById('cnt-free').textContent=d.free;
-            document.getElementById('cnt-inuse').textContent=d.inUse;
-            document.getElementById('cnt-waiting').textContent=d.waiting;
-            document.getElementById('cnt-bad').textContent=d.badPassword;
-            const pill=document.getElementById('pill');
-            pill.className=d.locked?'locked-pill':'live-pill';
-            pill.innerHTML=d.locked?'<div class="lock-dot"></div> Locked':'<div class="live-dot"></div> Live';
-            const freeBox=document.getElementById('free-box');
-            const freeLabel=document.getElementById('free-label');
-            const freeNum=document.getElementById('num-free');
-            const freeDesc=document.getElementById('free-desc');
-            const unlockBlock=document.getElementById('unlock-block');
-            if(d.locked){
-                freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
-                freeLabel.style.color='#f87171';freeLabel.innerHTML='&#128274; Free — Locked';
-                freeNum.style.color='#f87171';freeDesc.style.color='#7f2020';freeDesc.textContent=d.reason;
-                unlockBlock.style.display='block';
-            } else {
-                freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
-                freeLabel.style.color='#3fb950';freeLabel.innerHTML='&#10003; Free';
-                freeNum.style.color='#3fb950';freeDesc.style.color='#2a6e3a';freeDesc.textContent='Accounts ready';
-                unlockBlock.style.display='none';
-            }
-            checkInUseAlert(d.inUse);
-        }).catch(()=>{});
-    }
-    function showMsg(text,ok){const el=document.getElementById('add-msg');el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
-    function addAccount(){
-        const phone=document.getElementById('inp-phone').value.trim();
-        const password=document.getElementById('inp-pass').value.trim();
-        if(!phone||!password){showMsg('Phone and password required',false);return;}
-        fetch('/add-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})})
-        .then(r=>r.json()).then(d=>{
-            if(d.success){showMsg('Account '+phone+' added!',true);document.getElementById('inp-phone').value='';document.getElementById('inp-pass').value='';refreshStats();}
-            else{showMsg(d.error,false);}
-        });
-    }
-    setInterval(update,1);setInterval(refreshStats,1000);update();refreshStats();
-
     // In-use alert logic: 08:00-17:00 only
     let alertTimer=null;
     let alertTriggered=false;
@@ -863,6 +818,51 @@ app.get('/', (req, res) => {
             document.getElementById('alert-banner').classList.remove('show');
         }
     }
+
+    function refreshStats(){
+        fetch('/stats').then(r=>r.json()).then(d=>{
+            document.getElementById('num-free').textContent=d.free;
+            document.getElementById('num-inuse').textContent=d.inUse;
+            document.getElementById('num-waiting').textContent=d.waiting;
+            document.getElementById('num-bad').textContent=d.badPassword;
+            document.getElementById('cnt-free').textContent=d.free;
+            document.getElementById('cnt-inuse').textContent=d.inUse;
+            document.getElementById('cnt-waiting').textContent=d.waiting;
+            document.getElementById('cnt-bad').textContent=d.badPassword;
+            const pill=document.getElementById('pill');
+            pill.className=d.locked?'locked-pill':'live-pill';
+            pill.innerHTML=d.locked?'<div class="lock-dot"></div> Locked':'<div class="live-dot"></div> Live';
+            const freeBox=document.getElementById('free-box');
+            const freeLabel=document.getElementById('free-label');
+            const freeNum=document.getElementById('num-free');
+            const freeDesc=document.getElementById('free-desc');
+            const unlockBlock=document.getElementById('unlock-block');
+            if(d.locked){
+                freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
+                freeLabel.style.color='#f87171';freeLabel.innerHTML='&#128274; Free — Locked';
+                freeNum.style.color='#f87171';freeDesc.style.color='#7f2020';freeDesc.textContent=d.reason;
+                unlockBlock.style.display='block';
+            } else {
+                freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
+                freeLabel.style.color='#3fb950';freeLabel.innerHTML='&#10003; Free';
+                freeNum.style.color='#3fb950';freeDesc.style.color='#2a6e3a';freeDesc.textContent='Accounts ready';
+                unlockBlock.style.display='none';
+            }
+            checkInUseAlert(d.inUse);
+        }).catch(()=>{});
+    }
+    function showMsg(text,ok){const el=document.getElementById('add-msg');el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
+    function addAccount(){
+        const phone=document.getElementById('inp-phone').value.trim();
+        const password=document.getElementById('inp-pass').value.trim();
+        if(!phone||!password){showMsg('Phone and password required',false);return;}
+        fetch('/add-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})})
+        .then(r=>r.json()).then(d=>{
+            if(d.success){showMsg('Account '+phone+' added!',true);document.getElementById('inp-phone').value='';document.getElementById('inp-pass').value='';refreshStats();}
+            else{showMsg(d.error,false);}
+        });
+    }
+    setInterval(update,1);setInterval(refreshStats,1000);update();refreshStats();
 </script>
 </body>
 </html>`);
