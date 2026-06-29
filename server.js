@@ -670,14 +670,14 @@ app.get('/', (req, res) => {
         .view-btn{width:100%;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:none;background:#92400e;color:#fed7aa;text-decoration:none}
         .view-btn:hover{background:#a05213}
         .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 8px;font-size:11px;font-weight:700}
-        .divider{height:1px;background:#1a1f2a;margin-bottom:20px}
+
         .add-box{background:#0d1117;border:1.5px solid #21262d;border-radius:14px;padding:20px 24px;margin-bottom:20px}
         .add-title{font-size:13px;font-weight:500;color:#8b949e;margin-bottom:14px;letter-spacing:0.5px;text-transform:uppercase}
         .add-row{display:flex;gap:10px;flex-wrap:wrap}
         .add-input{flex:1;min-width:120px;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
         .add-input::placeholder{color:#4b5563}
         .add-btn{background:#1a3a6e;border:none;color:#a8d0ff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .reset-btn{width:100%;background:#130a0a;border:1.5px solid #3d1515;color:#f85149;padding:13px;border-radius:12px;font-size:13px;font-weight:500;cursor:pointer}
+
         .footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
         .tick{font-size:11px;color:#3fb950;font-family:monospace;opacity:0.7}
         .hint{font-size:10px;color:#252b35}
@@ -735,8 +735,7 @@ app.get('/', (req, res) => {
         </div>
         <div class="msg" id="add-msg"></div>
     </div>
-    <div class="divider"></div>
-    <button class="reset-btn" onclick="if(confirm('Reset all accounts to FREE and remove lock?')) fetch('/reset',{method:'POST'}).then(()=>location.reload())">&#8635; Reset all to free</button>
+
     <div class="footer">
         <span class="tick" id="tick">--:--:--</span>
         <span class="hint">Live data</span>
