@@ -784,11 +784,11 @@ app.get('/', (req, res) => {
     function fireAlert(){
         if(alertDismissed) return;
         if(lastInUseCount===0){
-            document.getElementById('alert-title').textContent='🖥️ Go and turn on your computer, it\'s time to work!';
+            document.getElementById('alert-title').textContent='&#x1F5A5; Go and turn on your computer, it's time to work!';
             document.getElementById('alert-sub').textContent='There are no accounts in use right now.';
         } else {
             const missing=45-lastInUseCount;
-            document.getElementById('alert-title').textContent='🚨 Alert — In Use dropped below 45!';
+            document.getElementById('alert-title').textContent='&#x1F6A8; Alert — In Use dropped below 45!';
             document.getElementById('alert-sub').textContent='Something happened to your '+missing+' tabs — go and check!';
         }
         document.getElementById('alert-banner').classList.add('show');
