@@ -358,8 +358,6 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
 const UNLOCK_HOUR = 7;
 const UNLOCK_MINUTE = 30;
-const LOCK_HOUR = 18;
-const LOCK_MINUTE = 0;
 const REMOVE_PASSWORD = '1234';
 const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -368,7 +366,6 @@ let poolLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
-// Free accounts after 24h waiting
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -378,7 +375,6 @@ setInterval(() => {
     });
 }, 60 * 1000);
 
-// Heartbeat timeout check
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -394,32 +390,17 @@ setInterval(() => {
     });
 }, 10 * 1000);
 
-// Lock/unlock logic: locks at 18:00 or when free <= 50, unlocks at 07:30
 setInterval(() => {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
-
-    // Unlock at 07:30
-    if (poolLocked && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE)) && hour < LOCK_HOUR) {
-        poolLocked = false;
-        poolLockedReason = '';
+    if (poolLocked && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE))) {
+        poolLocked = false; poolLockedReason = '';
         console.log('Pool unlocked at 07:30.');
         return;
     }
-
-    // Lock at 18:00
-    const isAfterLockTime = hour > LOCK_HOUR || (hour === LOCK_HOUR && minute >= LOCK_MINUTE);
-    if (!poolLocked && isAfterLockTime) {
-        poolLocked = true;
-        poolLockedReason = `Pool locked at 18:00. Unlocks at 07:30.`;
-        console.log(poolLockedReason);
-        return;
-    }
-
-    // Lock when free accounts reach threshold
-    if (!poolLocked && freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD) {
+    if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
         poolLocked = true;
         poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
         console.log(poolLockedReason);
@@ -670,29 +651,21 @@ app.get('/', (req, res) => {
         .view-btn{width:100%;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:none;background:#92400e;color:#fed7aa;text-decoration:none}
         .view-btn:hover{background:#a05213}
         .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 8px;font-size:11px;font-weight:700}
-
+        .divider{height:1px;background:#1a1f2a;margin-bottom:20px}
         .add-box{background:#0d1117;border:1.5px solid #21262d;border-radius:14px;padding:20px 24px;margin-bottom:20px}
         .add-title{font-size:13px;font-weight:500;color:#8b949e;margin-bottom:14px;letter-spacing:0.5px;text-transform:uppercase}
         .add-row{display:flex;gap:10px;flex-wrap:wrap}
         .add-input{flex:1;min-width:120px;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
         .add-input::placeholder{color:#4b5563}
         .add-btn{background:#1a3a6e;border:none;color:#a8d0ff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-
+        .reset-btn{width:100%;background:#130a0a;border:1.5px solid #3d1515;color:#f85149;padding:13px;border-radius:12px;font-size:13px;font-weight:500;cursor:pointer}
         .footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
         .tick{font-size:11px;color:#3fb950;font-family:monospace;opacity:0.7}
         .hint{font-size:10px;color:#252b35}
         .msg{font-size:12px;margin-top:10px;padding:8px 12px;border-radius:6px;display:none}
         .msg-ok{background:#0d4429;color:#3fb950}.msg-err{background:#4b1111;color:#f87171}
         @media(max-width:600px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:44px}}
-        @media(max-width:400px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:36px}}
-        .alert-banner{display:none;background:#1a0a0a;border:1.5px solid #f87171;border-radius:14px;padding:14px 20px;margin-bottom:20px;align-items:center;gap:14px;animation:pulse 1.5s infinite}
-        .alert-banner.show{display:flex}
-        @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.4)}70%{box-shadow:0 0 0 10px rgba(248,113,113,0)}}
-        .alert-icon{font-size:22px;flex-shrink:0;animation:blink 0.8s infinite}
-        .alert-text{flex:1}
-        .alert-title{font-size:13px;font-weight:600;color:#f87171;margin-bottom:3px}
-        .alert-sub{font-size:11px;color:#7f2020}
-        .alert-dismiss{background:none;border:1px solid #7f1d1d;color:#f87171;padding:5px 12px;border-radius:8px;font-size:11px;cursor:pointer;flex-shrink:0}
+        @media(max-width:400px){.four-boxes{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
@@ -703,14 +676,6 @@ app.get('/', (req, res) => {
             <div class="${poolLocked?'lock-dot':'live-dot'}"></div>
             ${poolLocked?'Locked':'Live'}
         </div>
-    </div>
-    <div class="alert-banner" id="alert-banner">
-        <div class="alert-icon">&#9888;</div>
-        <div class="alert-text">
-            <div class="alert-title" id="alert-title">&#128680; Alert — In Use dropped below 45!</div>
-            <div class="alert-sub" id="alert-sub">Something happened to your tabs — go and check!</div>
-        </div>
-        <button class="alert-dismiss" onclick="dismissAlert()">Dismiss</button>
     </div>
     <div class="four-boxes">
         <div class="box box-free" id="free-box">
@@ -751,7 +716,8 @@ app.get('/', (req, res) => {
         </div>
         <div class="msg" id="add-msg"></div>
     </div>
-
+    <div class="divider"></div>
+    <button class="reset-btn" onclick="if(confirm('Reset all accounts to FREE and remove lock?')) fetch('/reset',{method:'POST'}).then(()=>location.reload())">&#8635; Reset all to free</button>
     <div class="footer">
         <span class="tick" id="tick">--:--:--</span>
         <span class="hint">Live data</span>
@@ -770,55 +736,6 @@ app.get('/', (req, res) => {
             cd.textContent=Math.floor(diff/3600000)+'h '+pad(Math.floor((diff%3600000)/60000))+'m '+pad(Math.floor((diff%60000)/1000))+'s';
         }
     }
-    // In-use alert logic: 08:00-17:00 only
-    let alertTimer=null;
-    let alertTriggered=false;
-    let alertDismissed=false;
-    let lastInUseCount=45;
-
-    function dismissAlert(){
-        alertDismissed=true;
-        document.getElementById('alert-banner').classList.remove('show');
-    }
-
-    function fireAlert(){
-        if(alertDismissed) return;
-        if(lastInUseCount===0){
-            document.getElementById('alert-title').textContent='&#x1F5A5; Go and turn on your computer, it's time to work!';
-            document.getElementById('alert-sub').textContent='There are no accounts in use right now.';
-        } else {
-            const missing=45-lastInUseCount;
-            document.getElementById('alert-title').textContent='&#x1F6A8; Alert — In Use dropped below 45!';
-            document.getElementById('alert-sub').textContent='Something happened to your '+missing+' tabs — go and check!';
-        }
-        document.getElementById('alert-banner').classList.add('show');
-    }
-
-    function checkInUseAlert(inUseCount){
-        const now=new Date();
-        const hour=now.getHours();
-        lastInUseCount=inUseCount;
-        if(hour<8||hour>=17){
-            if(alertTimer){clearTimeout(alertTimer);alertTimer=null;}
-            return;
-        }
-        if(inUseCount<45){
-            if(!alertTimer&&!alertTriggered){
-                const delay=inUseCount===0?60000:600000;
-                alertTimer=setTimeout(()=>{
-                    alertTriggered=true;
-                    alertTimer=null;
-                    fireAlert();
-                },delay);
-            }
-        } else {
-            if(alertTimer){clearTimeout(alertTimer);alertTimer=null;}
-            alertTriggered=false;
-            alertDismissed=false;
-            document.getElementById('alert-banner').classList.remove('show');
-        }
-    }
-
     function refreshStats(){
         fetch('/stats').then(r=>r.json()).then(d=>{
             document.getElementById('num-free').textContent=d.free;
@@ -848,7 +765,6 @@ app.get('/', (req, res) => {
                 freeNum.style.color='#3fb950';freeDesc.style.color='#2a6e3a';freeDesc.textContent='Accounts ready';
                 unlockBlock.style.display='none';
             }
-            checkInUseAlert(d.inUse);
         }).catch(()=>{});
     }
     function showMsg(text,ok){const el=document.getElementById('add-msg');el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
@@ -953,6 +869,13 @@ app.get('/view/waiting', (req, res) => {
 
 app.get('/view/bad', (req, res) => {
     res.send(listPage('Bad Password', badPasswordAccounts.length + ' accounts with wrong password', badPasswordAccounts, 'bad'));
+});
+
+app.post('/heartbeat', (req, res) => {
+    const { phone } = req.body;
+    const account = accounts.find(a => a.phone === phone);
+    if (account && account.status === 'IN-USE') { account.lastHeartbeat = Date.now(); return res.json({ success: true }); }
+    res.json({ success: false, error: 'Account not found or not in use.' });
 });
 
 app.post('/wrong-password', (req, res) => {
