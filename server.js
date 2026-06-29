@@ -644,7 +644,22 @@ app.post('/reset', async (req, res) => {
 });
 
 // Start server after DB is ready
-initDB().then(() => {
+initDB().then(async () => {
+    // Check lock state immediately on startup
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const accounts = await getAccounts();
+    const freeCount = accounts.filter(a => a.status === 'FREE').length;
+    const isNightTime = hour >= 18 || hour < UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute < UNLOCK_MINUTE);
+    const isLowAccounts = freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD;
+    if (isNightTime || isLowAccounts) {
+        poolLocked = true;
+        poolLockedReason = isNightTime
+            ? 'Locked at 18:00. Unlocks at 07:30.'
+            : `Free accounts reached ${freeCount}. Locked until 07:30.`;
+        console.log('Startup lock:', poolLockedReason);
+    }
     app.listen(PORT, () => console.log(`Pool Manager active on port ${PORT} — connected to Postgres`));
 }).catch(err => {
     console.error('Failed to initialize DB:', err);
