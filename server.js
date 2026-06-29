@@ -358,6 +358,8 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
 const UNLOCK_HOUR = 7;
 const UNLOCK_MINUTE = 30;
+const LOCK_HOUR = 18;
+const LOCK_MINUTE = 0;
 const REMOVE_PASSWORD = '1234';
 const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -366,6 +368,7 @@ let poolLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
+// Free accounts after 24h waiting
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -375,6 +378,7 @@ setInterval(() => {
     });
 }, 60 * 1000);
 
+// Heartbeat timeout check
 setInterval(() => {
     const now = Date.now();
     accounts.forEach(acc => {
@@ -390,17 +394,32 @@ setInterval(() => {
     });
 }, 10 * 1000);
 
+// Lock/unlock logic: locks at 18:00 or when free <= 50, unlocks at 07:30
 setInterval(() => {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
-    if (poolLocked && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE))) {
-        poolLocked = false; poolLockedReason = '';
+
+    // Unlock at 07:30
+    if (poolLocked && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE)) && hour < LOCK_HOUR) {
+        poolLocked = false;
+        poolLockedReason = '';
         console.log('Pool unlocked at 07:30.');
         return;
     }
-    if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
+
+    // Lock at 18:00
+    const isAfterLockTime = hour > LOCK_HOUR || (hour === LOCK_HOUR && minute >= LOCK_MINUTE);
+    if (!poolLocked && isAfterLockTime) {
+        poolLocked = true;
+        poolLockedReason = `Pool locked at 18:00. Unlocks at 07:30.`;
+        console.log(poolLockedReason);
+        return;
+    }
+
+    // Lock when free accounts reach threshold
+    if (!poolLocked && freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD) {
         poolLocked = true;
         poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
         console.log(poolLockedReason);
@@ -869,13 +888,6 @@ app.get('/view/waiting', (req, res) => {
 
 app.get('/view/bad', (req, res) => {
     res.send(listPage('Bad Password', badPasswordAccounts.length + ' accounts with wrong password', badPasswordAccounts, 'bad'));
-});
-
-app.post('/heartbeat', (req, res) => {
-    const { phone } = req.body;
-    const account = accounts.find(a => a.phone === phone);
-    if (account && account.status === 'IN-USE') { account.lastHeartbeat = Date.now(); return res.json({ success: true }); }
-    res.json({ success: false, error: 'Account not found or not in use.' });
 });
 
 app.post('/wrong-password', (req, res) => {
