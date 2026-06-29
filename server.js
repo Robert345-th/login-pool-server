@@ -707,7 +707,7 @@ app.get('/', (req, res) => {
     <div class="alert-banner" id="alert-banner">
         <div class="alert-icon">&#9888;</div>
         <div class="alert-text">
-            <div class="alert-title">&#128680; Alert — In Use dropped below 45!</div>
+            <div class="alert-title" id="alert-title">&#128680; Alert — In Use dropped below 45!</div>
             <div class="alert-sub" id="alert-sub">Something happened to your tabs — go and check!</div>
         </div>
         <button class="alert-dismiss" onclick="dismissAlert()">Dismiss</button>
@@ -840,8 +840,14 @@ app.get('/', (req, res) => {
                     alertTriggered=true;
                     alertTimer=null;
                     if(!alertDismissed){
-                        const missing=45-lastInUseCount;
-                        document.getElementById('alert-sub').textContent='Something happened to your '+missing+' tabs — go and check!';
+                        if(lastInUseCount===0){
+                            document.getElementById('alert-title').textContent='Go and login the account, it\'s time to workk!';
+                            document.getElementById('alert-sub').textContent='There are no accounts in use right now.';
+                        } else {
+                            const missing=45-lastInUseCount;
+                            document.getElementById('alert-title').textContent='&#128680; Alert — In Use dropped below 45!';
+                            document.getElementById('alert-sub').textContent='Something happened to your '+missing+' tabs — go and check!';
+                        }
                         document.getElementById('alert-banner').classList.add('show');
                     }
                 },600000);
