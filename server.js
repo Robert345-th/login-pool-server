@@ -67,12 +67,24 @@ setInterval(async () => {
     const minute = now.getMinutes();
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
-    if (poolLocked && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE))) {
+
+    // Unlock at 07:30
+    if (poolLocked && hour < 18 && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE))) {
         poolLocked = false; poolLockedReason = '';
         console.log('Pool unlocked at 07:30.');
         return;
     }
-    if (!poolLocked && freeCount === FREE_ACCOUNT_LOCK_THRESHOLD) {
+
+    // Lock at 18:00
+    if (!poolLocked && hour >= 18) {
+        poolLocked = true;
+        poolLockedReason = 'Locked at 18:00. Unlocks at 07:30.';
+        console.log(poolLockedReason);
+        return;
+    }
+
+    // Lock when free accounts hit threshold
+    if (!poolLocked && freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD) {
         poolLocked = true;
         poolLockedReason = `Free accounts reached ${freeCount}. Locked until 07:30.`;
         console.log(poolLockedReason);
@@ -342,7 +354,6 @@ app.get('/', async (req, res) => {
         .msg{font-size:12px;margin-top:10px;padding:8px 12px;border-radius:6px;display:none}
         .msg-ok{background:#0d4429;color:#3fb950}.msg-err{background:#4b1111;color:#f87171}
         @media(max-width:600px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:44px}}
-        @media(max-width:400px){.four-boxes{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
@@ -393,8 +404,6 @@ app.get('/', async (req, res) => {
         </div>
         <div class="msg" id="add-msg"></div>
     </div>
-    <div class="divider"></div>
-    <button class="reset-btn" onclick="if(confirm('Reset all accounts to FREE and remove lock?')) fetch('/reset',{method:'POST'}).then(()=>location.reload())">&#8635; Reset all to free</button>
     <div class="footer">
         <span class="tick" id="tick">--:--:--</span>
         <span class="hint">Live data · Postgres</span>
