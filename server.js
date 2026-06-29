@@ -685,10 +685,27 @@ app.get('/', (req, res) => {
         .msg-ok{background:#0d4429;color:#3fb950}.msg-err{background:#4b1111;color:#f87171}
         @media(max-width:600px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:44px}}
         @media(max-width:400px){.four-boxes{grid-template-columns:1fr}}
+        .alert-banner{display:none;background:#1a0a0a;border:1.5px solid #f87171;border-radius:14px;padding:14px 20px;margin-bottom:20px;align-items:center;gap:14px}
+        .alert-banner.show{display:flex}
+        .alert-icon{font-size:22px;flex-shrink:0;animation:blink 0.8s infinite}
+        .alert-text{flex:1}
+        .alert-title{font-size:13px;font-weight:600;color:#f87171;margin-bottom:3px}
+        .alert-sub{font-size:11px;color:#7f2020}
+        .alert-countdown{font-size:20px;font-weight:700;color:#f87171;font-family:monospace;flex-shrink:0}
+        .alert-dismiss{background:none;border:1px solid #7f1d1d;color:#f87171;padding:5px 12px;border-radius:8px;font-size:11px;cursor:pointer;flex-shrink:0}
     </style>
 </head>
 <body>
 <div class="db">
+    <div class="alert-banner" id="alert-banner">
+        <div class="alert-icon">&#9888;</div>
+        <div class="alert-text">
+            <div class="alert-title">&#128680; Warning — In Use accounts dropped below 45!</div>
+            <div class="alert-sub" id="alert-sub">Something may have happened to your accounts.</div>
+        </div>
+        <div class="alert-countdown" id="alert-cd"></div>
+        <button class="alert-dismiss" onclick="dismissAlert()">Dismiss</button>
+    </div>
     <div class="top-bar">
         <div class="db-title">&#128274; Login pool manager</div>
         <div id="pill" class="${poolLocked?'locked-pill':'live-pill'}">
@@ -783,6 +800,7 @@ app.get('/', (req, res) => {
                 freeNum.style.color='#3fb950';freeDesc.style.color='#2a6e3a';freeDesc.textContent='Accounts ready';
                 unlockBlock.style.display='none';
             }
+            checkInUseAlert(d.inUse);
         }).catch(()=>{});
     }
     function showMsg(text,ok){const el=document.getElementById('add-msg');el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
@@ -797,6 +815,63 @@ app.get('/', (req, res) => {
         });
     }
     setInterval(update,1);setInterval(refreshStats,1000);update();refreshStats();
+
+    // In-use alert logic: 08:00-17:00 only, trigger if below 45 for 10 minutes
+    let alertTimer=null;
+    let alertTriggered=false;
+    let alertDismissed=false;
+    let alertSecondsLeft=0;
+    let alertInterval=null;
+
+    function dismissAlert(){
+        alertDismissed=true;
+        document.getElementById('alert-banner').classList.remove('show');
+        clearInterval(alertInterval);
+        alertInterval=null;
+    }
+
+    function checkInUseAlert(inUseCount){
+        const now=new Date();
+        const hour=now.getHours();
+        if(hour<8||hour>=17){
+            // Outside window — clear any running timer
+            if(alertTimer){clearTimeout(alertTimer);alertTimer=null;}
+            return;
+        }
+        if(inUseCount<45){
+            if(!alertTimer&&!alertTriggered){
+                alertSecondsLeft=600;
+                alertDismissed=false;
+                // Start countdown display
+                if(alertInterval)clearInterval(alertInterval);
+                alertInterval=setInterval(()=>{
+                    alertSecondsLeft--;
+                    const m=Math.floor(alertSecondsLeft/60);
+                    const s=alertSecondsLeft%60;
+                    const cd=document.getElementById('alert-cd');
+                    if(cd)cd.textContent=pad(m)+':'+pad(s);
+                    if(alertSecondsLeft<=0)clearInterval(alertInterval);
+                },1000);
+                alertTimer=setTimeout(()=>{
+                    alertTriggered=true;
+                    alertTimer=null;
+                    if(!alertDismissed){
+                        const banner=document.getElementById('alert-banner');
+                        document.getElementById('alert-sub').textContent='In Use has been below 45 for 10 minutes. Check your tabs!';
+                        banner.classList.add('show');
+                    }
+                },600000);
+            }
+        } else {
+            // Recovered — reset everything
+            if(alertTimer){clearTimeout(alertTimer);alertTimer=null;}
+            if(alertInterval){clearInterval(alertInterval);alertInterval=null;}
+            alertTriggered=false;
+            alertDismissed=false;
+            document.getElementById('alert-banner').classList.remove('show');
+            document.getElementById('alert-cd').textContent='';
+        }
+    }
 </script>
 </body>
 </html>`);
