@@ -1,7 +1,14 @@
 const express = require('express');
 const {
-    accounts,
-    badPasswordAccounts,
+    initDB,
+    getAccounts,
+    updateAccount,
+    addAccount,
+    removeAccount,
+    resetAllAccounts,
+    getBadPasswordAccounts,
+    addBadPasswordAccount,
+    removeBadPasswordAccount,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
     UNLOCK_HOUR,
@@ -27,34 +34,38 @@ let poolLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
-setInterval(() => {
+// Auto-free accounts after 24h
+setInterval(async () => {
+    const accounts = await getAccounts();
     const now = Date.now();
-    accounts.forEach(acc => {
+    for (const acc of accounts) {
         if (acc.status === 'IN-USE' && acc.logoutTime && (now - acc.logoutTime >= TWENTY_FOUR_HOURS_MS)) {
-            acc.status = 'FREE'; acc.logoutTime = null; acc.logoutTimeStr = null; acc.lastHeartbeat = null;
+            await updateAccount(acc.phone, { status: 'FREE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: null });
         }
-    });
+    }
 }, 60 * 1000);
 
-setInterval(() => {
+// Heartbeat timeout check
+setInterval(async () => {
+    const accounts = await getAccounts();
     const now = Date.now();
-    accounts.forEach(acc => {
+    for (const acc of accounts) {
         if (acc.status === 'IN-USE' && !acc.logoutTime && acc.lastHeartbeat) {
-            const elapsed = now - acc.lastHeartbeat;
-            if (elapsed > HEARTBEAT_TIMEOUT_MS) {
+            if (now - acc.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
                 const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
                 console.log(`Heartbeat lost for ${acc.phone}. Moving to waiting.`);
-                acc.logoutTime = Date.now();
-                acc.logoutTimeStr = timeStr + ' (tab closed)';
+                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (tab closed)' });
             }
         }
-    });
+    }
 }, 10 * 1000);
 
-setInterval(() => {
+// Pool lock check
+setInterval(async () => {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
+    const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
     if (poolLocked && (hour > UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute >= UNLOCK_MINUTE))) {
         poolLocked = false; poolLockedReason = '';
@@ -68,7 +79,9 @@ setInterval(() => {
     }
 }, 10 * 1000);
 
-app.get('/stats', (req, res) => {
+app.get('/stats', async (req, res) => {
+    const accounts = await getAccounts();
+    const badPasswordAccounts = await getBadPasswordAccounts();
     res.json({
         free: accounts.filter(a => a.status === 'FREE').length,
         inUse: accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime).length,
@@ -79,18 +92,20 @@ app.get('/stats', (req, res) => {
     });
 });
 
-app.get('/inuse-stats', (req, res) => {
+app.get('/inuse-stats', async (req, res) => {
+    const accounts = await getAccounts();
     const list = accounts
         .filter(a => a.status === 'IN-USE' && !a.logoutTime)
         .map(a => ({ phone: a.phone, lastHeartbeat: a.lastHeartbeat }));
     res.json(list);
 });
 
-app.post('/heartbeat', (req, res) => {
+app.post('/heartbeat', async (req, res) => {
     const { phone } = req.body;
+    const accounts = await getAccounts();
     const account = accounts.find(a => a.phone === phone);
     if (account && account.status === 'IN-USE') {
-        account.lastHeartbeat = Date.now();
+        await updateAccount(phone, { lastHeartbeat: Date.now() });
         return res.json({ success: true });
     }
     res.json({ success: false, error: 'Account not found or not in use.' });
@@ -275,10 +290,12 @@ function listPage(title, subtitle, rows, type) {
 </html>`;
 }
 
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
+    const accounts = await getAccounts();
     const freeAccounts = accounts.filter(a => a.status === 'FREE');
     const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
     const waitingAccounts = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime);
+    const badPasswordAccounts = await getBadPasswordAccounts();
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -310,7 +327,6 @@ app.get('/', (req, res) => {
         .unlock-timer{font-size:15px;font-weight:500;color:#fff;margin-bottom:3px}
         .unlock-sub{font-size:10px;color:#4b1111;margin-bottom:12px}
         .view-btn{width:100%;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:none;background:#92400e;color:#fed7aa;text-decoration:none}
-        .view-btn:hover{background:#a05213}
         .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 8px;font-size:11px;font-weight:700}
         .divider{height:1px;background:#1a1f2a;margin-bottom:20px}
         .add-box{background:#0d1117;border:1.5px solid #21262d;border-radius:14px;padding:20px 24px;margin-bottom:20px}
@@ -381,7 +397,7 @@ app.get('/', (req, res) => {
     <button class="reset-btn" onclick="if(confirm('Reset all accounts to FREE and remove lock?')) fetch('/reset',{method:'POST'}).then(()=>location.reload())">&#8635; Reset all to free</button>
     <div class="footer">
         <span class="tick" id="tick">--:--:--</span>
-        <span class="hint">Live data</span>
+        <span class="hint">Live data · Postgres</span>
     </div>
 </div>
 <script>
@@ -445,12 +461,14 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-app.get('/view/free', (req, res) => {
+app.get('/view/free', async (req, res) => {
+    const accounts = await getAccounts();
     const list = accounts.filter(a => a.status === 'FREE');
     res.send(listPage('Free Accounts', list.length + ' accounts ready', list, 'free'));
 });
 
-app.get('/view/inuse', (req, res) => {
+app.get('/view/inuse', async (req, res) => {
+    const accounts = await getAccounts();
     const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
     const rowsHtml = list.length
         ? list.map((r, i) => `
@@ -522,98 +540,107 @@ app.get('/view/inuse', (req, res) => {
 </html>`);
 });
 
-app.get('/view/waiting', (req, res) => {
+app.get('/view/waiting', async (req, res) => {
+    const accounts = await getAccounts();
     const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
         .map(a => ({ phone: a.phone, freeAt: a.logoutTime + TWENTY_FOUR_HOURS_MS, logoutTimeStr: a.logoutTimeStr }));
     res.send(waitingPage(list));
 });
 
-app.get('/view/bad', (req, res) => {
+app.get('/view/bad', async (req, res) => {
+    const badPasswordAccounts = await getBadPasswordAccounts();
     res.send(listPage('Bad Password', badPasswordAccounts.length + ' accounts with wrong password', badPasswordAccounts, 'bad'));
 });
 
-app.post('/wrong-password', (req, res) => {
+app.post('/wrong-password', async (req, res) => {
     const { phone } = req.body;
     if (!phone) return res.json({ success: false, error: 'Phone required.' });
     const now = new Date();
     const timeStr = pad(now.getHours()) + ':' + pad(now.getMinutes());
-    const index = accounts.findIndex(a => a.phone === phone);
-    const acc = index !== -1 ? accounts.splice(index, 1)[0] : { phone, password: 'unknown' };
-    if (!badPasswordAccounts.find(a => a.phone === phone)) {
-        badPasswordAccounts.push({ phone: acc.phone, password: acc.password, reportedAt: timeStr, status: 'BAD_PASSWORD' });
-    }
+    const accounts = await getAccounts();
+    const acc = accounts.find(a => a.phone === phone) || { phone, password: 'unknown' };
+    await removeAccount(phone);
+    await addBadPasswordAccount(acc.phone, acc.password, timeStr);
     res.json({ success: true });
 });
 
-app.post('/add-account', (req, res) => {
+app.post('/add-account', async (req, res) => {
     const { phone, password } = req.body;
     if (!phone || !password) return res.json({ success: false, error: 'Phone and password required.' });
+    const accounts = await getAccounts();
     if (accounts.find(a => a.phone === phone)) return res.json({ success: false, error: 'Account already exists.' });
-    accounts.push({ phone, password, status: 'FREE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: null });
+    await addAccount(phone, password);
     res.json({ success: true });
 });
 
-app.post('/remove-account', (req, res) => {
+app.post('/remove-account', async (req, res) => {
     const { phone, pin } = req.body;
     if (pin !== REMOVE_PASSWORD) return res.json({ success: false, error: 'Incorrect password.' });
-    const index = accounts.findIndex(a => a.phone === phone);
-    if (index === -1) return res.json({ success: false, error: 'Account not found.' });
-    accounts.splice(index, 1);
+    await removeAccount(phone);
     res.json({ success: true });
 });
 
-app.post('/remove-bad-password', (req, res) => {
+app.post('/remove-bad-password', async (req, res) => {
     const { phone, pin } = req.body;
     if (pin !== REMOVE_PASSWORD) return res.json({ success: false, error: 'Incorrect password.' });
-    const index = badPasswordAccounts.findIndex(a => a.phone === phone);
-    if (index === -1) return res.json({ success: false, error: 'Account not found.' });
-    badPasswordAccounts.splice(index, 1);
+    await removeBadPasswordAccount(phone);
     res.json({ success: true });
 });
 
-app.post('/request-login', (req, res) => {
+app.post('/request-login', async (req, res) => {
     if (poolLocked) return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
-    const availableAccount = accounts.find(acc => acc.status === 'FREE');
-    if (availableAccount) {
-        availableAccount.status = 'IN-USE'; availableAccount.logoutTime = null;
-        availableAccount.logoutTimeStr = null; availableAccount.lastHeartbeat = Date.now();
-        return res.json({ success: true, phone: availableAccount.phone, password: availableAccount.password });
+    const accounts = await getAccounts();
+    const available = accounts.find(a => a.status === 'FREE');
+    if (available) {
+        await updateAccount(available.phone, { status: 'IN-USE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: Date.now() });
+        return res.json({ success: true, phone: available.phone, password: available.password });
     }
-    return res.json({ success: false, error: "No free accounts available" });
+    return res.json({ success: false, error: 'No free accounts available' });
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { phone } = req.body;
-    const account = accounts.find(acc => acc.phone === phone);
+    const accounts = await getAccounts();
+    const account = accounts.find(a => a.phone === phone);
     if (account && account.status === 'FREE') {
-        account.status = 'IN-USE'; account.logoutTime = null;
-        account.logoutTimeStr = null; account.lastHeartbeat = Date.now();
+        await updateAccount(phone, { status: 'IN-USE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: Date.now() });
         return res.json({ success: true, message: `Account ${phone} marked as logged in.` });
     }
-    return res.json({ success: false, error: "Account not available or already in use." });
+    return res.json({ success: false, error: 'Account not available or already in use.' });
 });
 
-app.post('/logout', (req, res) => {
+app.post('/logout', async (req, res) => {
     const { phone, logoutTime } = req.body;
-    const account = accounts.find(acc => acc.phone === phone);
+    const accounts = await getAccounts();
+    const account = accounts.find(a => a.phone === phone);
     if (account) {
-        account.logoutTime = Date.now(); account.logoutTimeStr = logoutTime; account.lastHeartbeat = null;
-        return res.json({ success: true, message: `Account ${phone} logged out at ${logoutTime}. Will free after 24h.` });
+        await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null });
+        return res.json({ success: true, message: `Account ${phone} logged out. Will free after 24h.` });
     }
-    return res.json({ success: false, error: "Account not found." });
+    return res.json({ success: false, error: 'Account not found.' });
 });
 
-app.post('/aviator-lock', (req, res) => {
+app.post('/aviator-lock', async (req, res) => {
     const { phone } = req.body;
-    const account = accounts.find(acc => acc.phone === phone);
-    if (account) { account.status = 'LOCKED'; return res.json({ success: true }); }
-    return res.json({ success: false, error: "Account not found." });
+    const accounts = await getAccounts();
+    const account = accounts.find(a => a.phone === phone);
+    if (account) {
+        await updateAccount(phone, { status: 'LOCKED' });
+        return res.json({ success: true });
+    }
+    return res.json({ success: false, error: 'Account not found.' });
 });
 
-app.post('/reset', (req, res) => {
-    accounts.forEach(acc => { acc.status = 'FREE'; acc.logoutTime = null; acc.logoutTimeStr = null; acc.lastHeartbeat = null; });
+app.post('/reset', async (req, res) => {
+    await resetAllAccounts();
     poolLocked = false; poolLockedReason = '';
     res.json({ success: true });
 });
 
-app.listen(PORT, () => console.log(`Pool Manager active on port ${PORT}`));
+// Start server after DB is ready
+initDB().then(() => {
+    app.listen(PORT, () => console.log(`Pool Manager active on port ${PORT} — connected to Postgres`));
+}).catch(err => {
+    console.error('Failed to initialize DB:', err);
+    process.exit(1);
+});
