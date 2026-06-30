@@ -160,7 +160,10 @@ async function initDB() {
 }
 
 async function getAccounts() {
-    const { rows } = await pool.query('SELECT * FROM accounts');
+    // ORDER BY phone keeps the row order stable across every call, so the
+    // heartbeat status on the dashboard always lines up with the correct
+    // phone number instead of jumping between rows on each refresh.
+    const { rows } = await pool.query('SELECT * FROM accounts ORDER BY phone ASC');
     return rows.map(r => ({
         phone: r.phone,
         password: r.password,
