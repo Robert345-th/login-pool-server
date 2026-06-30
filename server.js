@@ -2,6 +2,7 @@ const express = require('express');
 const {
     initDB,
     getAccounts,
+    claimFreeAccount,
     updateAccount,
     addAccount,
     removeAccount,
@@ -68,7 +69,6 @@ setInterval(async () => {
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
 
-    // Determine if we should be locked right now
     const isNightTime = hour >= 18 || hour < UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute < UNLOCK_MINUTE);
     const isLowAccounts = freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD;
 
@@ -593,15 +593,22 @@ app.post('/remove-bad-password', async (req, res) => {
     res.json({ success: true });
 });
 
+// FIXED: now uses claimFreeAccount(), an atomic SQL transaction with
+// FOR UPDATE SKIP LOCKED, instead of a separate read+write. This guarantees
+// that when many tabs call this endpoint at the same moment, each one gets
+// a DIFFERENT account and the database update can never be lost or overwritten.
 app.post('/request-login', async (req, res) => {
     if (poolLocked) return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
-    const accounts = await getAccounts();
-    const available = accounts.find(a => a.status === 'FREE');
-    if (available) {
-        await updateAccount(available.phone, { status: 'IN-USE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: Date.now() });
-        return res.json({ success: true, phone: available.phone, password: available.password });
+    try {
+        const claimed = await claimFreeAccount(Date.now());
+        if (claimed) {
+            return res.json({ success: true, phone: claimed.phone, password: claimed.password });
+        }
+        return res.json({ success: false, error: 'No free accounts available' });
+    } catch (e) {
+        console.error('request-login error:', e);
+        return res.json({ success: false, error: 'Server error, please retry.' });
     }
-    return res.json({ success: false, error: 'No free accounts available' });
 });
 
 app.post('/login', async (req, res) => {
@@ -643,9 +650,7 @@ app.post('/reset', async (req, res) => {
     res.json({ success: true });
 });
 
-// Start server after DB is ready
 initDB().then(async () => {
-    // Check lock state immediately on startup
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
