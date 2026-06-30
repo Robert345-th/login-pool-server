@@ -171,6 +171,40 @@ async function getAccounts() {
     }));
 }
 
+// ATOMIC CLAIM: picks ONE free account and marks it IN-USE in a single SQL
+// statement, so concurrent requests (many tabs hitting /request-login at once)
+// can never grab the same account or silently overwrite each other's update.
+// FOR UPDATE SKIP LOCKED ensures each concurrent transaction gets a DIFFERENT row.
+async function claimFreeAccount(heartbeatNow) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(`
+            SELECT phone, password FROM accounts
+            WHERE status = 'FREE'
+            ORDER BY phone
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        `);
+        if (rows.length === 0) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+        const { phone, password } = rows[0];
+        await client.query(
+            `UPDATE accounts SET status = 'IN-USE', logout_time = NULL, logout_time_str = NULL, last_heartbeat = $2 WHERE phone = $1`,
+            [phone, heartbeatNow]
+        );
+        await client.query('COMMIT');
+        return { phone, password };
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
 async function updateAccount(phone, fields) {
     const map = { logoutTime: 'logout_time', logoutTimeStr: 'logout_time_str', lastHeartbeat: 'last_heartbeat', status: 'status' };
     const keys = Object.keys(fields);
@@ -214,6 +248,7 @@ module.exports = {
     pool,
     initDB,
     getAccounts,
+    claimFreeAccount,
     updateAccount,
     addAccount,
     removeAccount,
