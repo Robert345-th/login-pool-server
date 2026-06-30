@@ -10,7 +10,7 @@ const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
 const UNLOCK_HOUR = 7;
 const UNLOCK_MINUTE = 30;
 const REMOVE_PASSWORD = '1234';
-const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000;
+const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function initDB() {
     await pool.query(`
