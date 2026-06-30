@@ -120,6 +120,37 @@ app.post('/heartbeat', async (req, res) => {
     res.json({ success: false, error: 'Account not found or not in use.' });
 });
 
+// Fired by navigator.sendBeacon the instant a tab actually closes (real close,
+// not a connection drop). Moves the account straight to "Waiting 24h" right
+// away instead of waiting for the heartbeat timeout to expire. sendBeacon
+// requests don't carry a normal JSON content-type reliably across browsers,
+// so we read the raw body and parse it manually here.
+app.post('/tab-closed', express.text({ type: '*/*' }), async (req, res) => {
+    try {
+        let phone;
+        if (typeof req.body === 'string') {
+            const parsed = JSON.parse(req.body);
+            phone = parsed.phone;
+        } else if (req.body && req.body.phone) {
+            phone = req.body.phone;
+        }
+        if (!phone) return res.json({ success: false, error: 'Phone required.' });
+
+        const accounts = await getAccounts();
+        const account = accounts.find(a => a.phone === phone);
+        if (account && account.status === 'IN-USE' && !account.logoutTime) {
+            const now = new Date();
+            const timeStr = pad(now.getHours()) + ':' + pad(now.getMinutes());
+            console.log(`Tab closed signal received for ${phone}. Moving to waiting.`);
+            await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (tab closed)' });
+        }
+        res.json({ success: true });
+    } catch (e) {
+        console.error('tab-closed error:', e);
+        res.json({ success: false });
+    }
+});
+
 function waitingPage(rows) {
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
