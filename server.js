@@ -2,6 +2,7 @@ const express = require('express');
 const {
     initDB,
     getAccounts,
+    getAccountByTabId,
     claimFreeAccount,
     updateAccount,
     addAccount,
@@ -12,8 +13,12 @@ const {
     removeBadPasswordAccount,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
-    UNLOCK_HOUR,
-    UNLOCK_MINUTE,
+    LOCK_START_HOUR,
+    LOCK_START_MINUTE,
+    LOCK_END_HOUR,
+    LOCK_END_MINUTE,
+    LOW_ACCOUNT_LOCK_HOUR,
+    LOW_ACCOUNT_LOCK_MINUTE,
     REMOVE_PASSWORD,
     HEARTBEAT_TIMEOUT_MS,
     IN_USE_TIMEOUT_MS,
@@ -65,30 +70,44 @@ setInterval(async () => {
     }
 }, 60 * 1000);
 
-// Pool lock check
+// Pool lock check — new rules:
+// 1. Time lock: 07:30 to 13:00 — pool locked, no accounts dispensed
+// 2. Low account lock: only applies from 14:30 onwards — if free < 50, lock
+// 3. Between 13:00 and 14:30: pool open, no low-account lock regardless of count
+function getZambiaTime() {
+    const zambiaStr = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lusaka' });
+    const timePart = zambiaStr.split(', ')[1];
+    const [h, m] = timePart.split(':').map(Number);
+    return { hour: h, minute: m };
+}
+
 setInterval(async () => {
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
+    const { hour, minute } = getZambiaTime();
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
 
-    // Determine if we should be locked right now
-    const isNightTime = hour >= 18 || hour < UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute < UNLOCK_MINUTE);
-    const isLowAccounts = freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD;
+    // Is it within the 07:30–13:00 time lock window?
+    const afterLockStart = hour > LOCK_START_HOUR || (hour === LOCK_START_HOUR && minute >= LOCK_START_MINUTE);
+    const beforeLockEnd = hour < LOCK_END_HOUR || (hour === LOCK_END_HOUR && minute < LOCK_END_MINUTE);
+    const isTimeLocked = afterLockStart && beforeLockEnd;
 
-    if (isNightTime || isLowAccounts) {
+    // Is it 14:30 or later? (when low-account lock can apply)
+    const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
+    const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
+
+    if (isTimeLocked || isLowAccounts) {
         if (!poolLocked) {
             poolLocked = true;
-            poolLockedReason = isNightTime
-                ? 'Locked at 18:00. Unlocks at 07:30.'
-                : `Free accounts reached ${freeCount}. Locked until 07:30.`;
+            poolLockedReason = isTimeLocked
+                ? 'Locked at 07:30. Unlocks at 13:00.'
+                : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
             console.log(poolLockedReason);
         }
     } else {
         if (poolLocked) {
-            poolLocked = false; poolLockedReason = '';
-            console.log('Pool unlocked at 07:30.');
+            poolLocked = false;
+            poolLockedReason = '';
+            console.log('Pool unlocked.');
         }
     }
 }, 10 * 1000);
@@ -599,9 +618,29 @@ app.post('/remove-bad-password', async (req, res) => {
 });
 
 app.post('/request-login', async (req, res) => {
-    if (poolLocked) return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
+    if (poolLocked) return res.json({ success: false, error: `Pool locked. ${poolLockedReason}` });
+    const { tabId } = req.body;
     try {
-        const claimed = await claimFreeAccount(Date.now());
+        // If this tab already has an IN-USE account, move it to Waiting 24h
+        // before assigning a new one. This handles tab reloads gracefully —
+        // the old account starts its 24h cooldown immediately instead of
+        // sitting as a ghost IN-USE entry.
+        if (tabId) {
+            const existing = await getAccountByTabId(tabId);
+            if (existing) {
+                const { hour, minute } = getZambiaTime();
+                const timeStr = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
+                console.log(`Tab ${tabId} already held ${existing.phone}. Moving to Waiting.`);
+                await updateAccount(existing.phone, {
+                    logoutTime: Date.now(),
+                    logoutTimeStr: timeStr + ' (re-login)',
+                    lastHeartbeat: null,
+                    inUseSince: null,
+                    tabId: null,
+                });
+            }
+        }
+        const claimed = await claimFreeAccount(Date.now(), tabId);
         if (claimed) {
             return res.json({ success: true, phone: claimed.phone, password: claimed.password });
         }
@@ -628,7 +667,7 @@ app.post('/logout', async (req, res) => {
     const accounts = await getAccounts();
     const account = accounts.find(a => a.phone === phone);
     if (account) {
-        await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null, inUseSince: null });
+        await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null, inUseSince: null, tabId: null });
         return res.json({ success: true, message: `Account ${phone} logged out. Will free after 24h.` });
     }
     return res.json({ success: false, error: 'Account not found.' });
@@ -653,19 +692,20 @@ app.post('/reset', async (req, res) => {
 
 // Start server after DB is ready
 initDB().then(async () => {
-    // Check lock state immediately on startup
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
+    // Check lock state immediately on startup using new rules
+    const { hour, minute } = getZambiaTime();
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
-    const isNightTime = hour >= 18 || hour < UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute < UNLOCK_MINUTE);
-    const isLowAccounts = freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD;
-    if (isNightTime || isLowAccounts) {
+    const afterLockStart = hour > LOCK_START_HOUR || (hour === LOCK_START_HOUR && minute >= LOCK_START_MINUTE);
+    const beforeLockEnd = hour < LOCK_END_HOUR || (hour === LOCK_END_HOUR && minute < LOCK_END_MINUTE);
+    const isTimeLocked = afterLockStart && beforeLockEnd;
+    const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
+    const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
+    if (isTimeLocked || isLowAccounts) {
         poolLocked = true;
-        poolLockedReason = isNightTime
-            ? 'Locked at 18:00. Unlocks at 07:30.'
-            : `Free accounts reached ${freeCount}. Locked until 07:30.`;
+        poolLockedReason = isTimeLocked
+            ? 'Locked at 07:30. Unlocks at 13:00.'
+            : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
         console.log('Startup lock:', poolLockedReason);
     }
     app.listen(PORT, () => console.log(`Pool Manager active on port ${PORT} — connected to Postgres`));
