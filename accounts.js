@@ -525,6 +525,53 @@ async function getAccounts() {
     }));
 }
 
+// Single-transaction version of: find old account by tabId → move to
+// Waiting 24h → claim a new free account. All three steps happen inside
+// one database connection with no round-trips between them, eliminating
+// the delay that occurred when they ran as three separate operations.
+async function reLoginForTab(tabId, heartbeatNow, logoutTimeStr) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Step 1: find and release the old account held by this tab
+        if (tabId) {
+            const { rows: oldRows } = await client.query(
+                `SELECT phone FROM accounts WHERE tab_id = $1 AND status = 'IN-USE' AND logout_time IS NULL LIMIT 1 FOR UPDATE SKIP LOCKED`,
+                [tabId]
+            );
+            if (oldRows.length > 0) {
+                await client.query(
+                    `UPDATE accounts SET logout_time = $2, logout_time_str = $3, last_heartbeat = NULL, in_use_since = NULL, tab_id = NULL WHERE phone = $1`,
+                    [oldRows[0].phone, heartbeatNow, logoutTimeStr + ' (re-login)']
+                );
+            }
+        }
+
+        // Step 2: claim a new free account for this tab
+        const { rows: newRows } = await client.query(
+            `SELECT phone, password FROM accounts WHERE status = 'FREE' ORDER BY phone LIMIT 1 FOR UPDATE SKIP LOCKED`
+        );
+        if (newRows.length === 0) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+        const { phone, password } = newRows[0];
+        await client.query(
+            `UPDATE accounts SET status = 'IN-USE', logout_time = NULL, logout_time_str = NULL, last_heartbeat = $2, in_use_since = $2, tab_id = $3 WHERE phone = $1`,
+            [phone, heartbeatNow, tabId || null]
+        );
+
+        await client.query('COMMIT');
+        return { phone, password };
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
 // Find an IN-USE account currently held by a specific tab ID
 async function getAccountByTabId(tabId) {
     const { rows } = await pool.query(
@@ -620,6 +667,7 @@ module.exports = {
     getAccounts,
     getAccountByTabId,
     claimFreeAccount,
+    reLoginForTab,
     updateAccount,
     addAccount,
     removeAccount,
