@@ -4,6 +4,7 @@ const {
     getAccounts,
     getAccountByTabId,
     claimFreeAccount,
+    reLoginForTab,
     updateAccount,
     addAccount,
     removeAccount,
@@ -123,7 +124,7 @@ app.get('/inuse-stats', async (req, res) => {
     const accounts = await getAccounts();
     const list = accounts
         .filter(a => a.status === 'IN-USE' && !a.logoutTime)
-        .map(a => ({ phone: a.phone, lastHeartbeat: a.lastHeartbeat }));
+        .map(a => ({ phone: a.phone, lastHeartbeat: a.lastHeartbeat, tabId: a.tabId }));
     res.json(list);
 });
 
@@ -548,12 +549,12 @@ app.get('/view/inuse', async (req, res) => {
             data.forEach((acc,i)=>{
                 const el=document.getElementById('hb-'+i);
                 if(!el) return;
-                if(!acc.lastHeartbeat){el.className='row-hb hb-warning';el.textContent='⚡ Waiting for first heartbeat...';return;}
+                if(!acc.lastHeartbeat){el.className='row-hb hb-warning';el.textContent='⚡ Waiting for first heartbeat...'+(acc.tabId?' — '+acc.tabId:'');return;}
                 const elapsed=Date.now()-acc.lastHeartbeat;
                 const s=Math.floor(elapsed/1000);
-                if(elapsed<5000){el.className='row-hb hb-alive';el.textContent='● Heartbeat OK — '+s+'s ago';}
-                else if(elapsed<30000){el.className='row-hb hb-warning';el.textContent='◐ Heartbeat slow — '+s+'s ago';}
-                else{el.className='row-hb hb-dead';el.textContent='✕ No heartbeat — '+s+'s ago';}
+                if(elapsed<5000){el.className='row-hb hb-alive';el.textContent='● Heartbeat OK — '+s+'s ago'+(acc.tabId?' — '+acc.tabId:'');}
+                else if(elapsed<30000){el.className='row-hb hb-warning';el.textContent='◐ Heartbeat slow — '+s+'s ago'+(acc.tabId?' — '+acc.tabId:'');}
+                else{el.className='row-hb hb-dead';el.textContent='✕ No heartbeat — '+s+'s ago'+(acc.tabId?' — '+acc.tabId:'');}
             });
         }).catch(()=>{});
     }
@@ -615,26 +616,11 @@ app.post('/request-login', async (req, res) => {
     if (poolLocked) return res.json({ success: false, error: `Pool locked. ${poolLockedReason}` });
     const { tabId } = req.body;
     try {
-        // If this tab already has an IN-USE account, move it to Waiting 24h
-        // before assigning a new one. This handles tab reloads gracefully —
-        // the old account starts its 24h cooldown immediately instead of
-        // sitting as a ghost IN-USE entry.
-        if (tabId) {
-            const existing = await getAccountByTabId(tabId);
-            if (existing) {
-                const { hour, minute } = getZambiaTime();
-                const timeStr = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
-                console.log(`Tab ${tabId} already held ${existing.phone}. Moving to Waiting.`);
-                await updateAccount(existing.phone, {
-                    logoutTime: Date.now(),
-                    logoutTimeStr: timeStr + ' (re-login)',
-                    lastHeartbeat: null,
-                    inUseSince: null,
-                    tabId: null,
-                });
-            }
-        }
-        const claimed = await claimFreeAccount(Date.now(), tabId);
+        const { hour, minute } = getZambiaTime();
+        const timeStr = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
+        // Single transaction: moves old account to Waiting (if any) and
+        // claims a new one in one round-trip — no delay between steps.
+        const claimed = await reLoginForTab(tabId, Date.now(), timeStr);
         if (claimed) {
             return res.json({ success: true, phone: claimed.phone, password: claimed.password });
         }
