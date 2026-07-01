@@ -13,10 +13,6 @@ const {
     removeBadPasswordAccount,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
-    LOCK_START_HOUR,
-    LOCK_START_MINUTE,
-    LOCK_END_HOUR,
-    LOCK_END_MINUTE,
     LOW_ACCOUNT_LOCK_HOUR,
     LOW_ACCOUNT_LOCK_MINUTE,
     REMOVE_PASSWORD,
@@ -70,10 +66,10 @@ setInterval(async () => {
     }
 }, 60 * 1000);
 
-// Pool lock check — new rules:
-// 1. Time lock: 07:30 to 13:00 — pool locked, no accounts dispensed
-// 2. Low account lock: only applies from 14:30 onwards — if free < 50, lock
-// 3. Between 13:00 and 14:30: pool open, no low-account lock regardless of count
+// Two independent lock conditions — both can lock the pool:
+// 1. TIME LOCK: 18:00 to 07:30 — pool always locked during these hours
+// 2. LOW ACCOUNT LOCK: only from 14:30 onwards — if free < 50, lock
+//    Before 14:30, free account count doesn't matter.
 function getZambiaTime() {
     const zambiaStr = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lusaka' });
     const timePart = zambiaStr.split(', ')[1];
@@ -86,12 +82,10 @@ setInterval(async () => {
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
 
-    // Is it within the 07:30–13:00 time lock window?
-    const afterLockStart = hour > LOCK_START_HOUR || (hour === LOCK_START_HOUR && minute >= LOCK_START_MINUTE);
-    const beforeLockEnd = hour < LOCK_END_HOUR || (hour === LOCK_END_HOUR && minute < LOCK_END_MINUTE);
-    const isTimeLocked = afterLockStart && beforeLockEnd;
+    // Time lock: 18:00 to 07:30
+    const isTimeLocked = hour >= 18 || hour < 7 || (hour === 7 && minute < 30);
 
-    // Is it 14:30 or later? (when low-account lock can apply)
+    // Low account lock: only from 14:30 onwards
     const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
     const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
 
@@ -99,7 +93,7 @@ setInterval(async () => {
         if (!poolLocked) {
             poolLocked = true;
             poolLockedReason = isTimeLocked
-                ? 'Locked at 07:30. Unlocks at 13:00.'
+                ? 'Locked at 18:00. Unlocks at 07:30.'
                 : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
             console.log(poolLockedReason);
         }
@@ -692,19 +686,17 @@ app.post('/reset', async (req, res) => {
 
 // Start server after DB is ready
 initDB().then(async () => {
-    // Check lock state immediately on startup using new rules
+    // Check lock state immediately on startup
     const { hour, minute } = getZambiaTime();
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
-    const afterLockStart = hour > LOCK_START_HOUR || (hour === LOCK_START_HOUR && minute >= LOCK_START_MINUTE);
-    const beforeLockEnd = hour < LOCK_END_HOUR || (hour === LOCK_END_HOUR && minute < LOCK_END_MINUTE);
-    const isTimeLocked = afterLockStart && beforeLockEnd;
+    const isTimeLocked = hour >= 18 || hour < 7 || (hour === 7 && minute < 30);
     const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
     const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
     if (isTimeLocked || isLowAccounts) {
         poolLocked = true;
         poolLockedReason = isTimeLocked
-            ? 'Locked at 07:30. Unlocks at 13:00.'
+            ? 'Locked at 18:00. Unlocks at 07:30.'
             : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
         console.log('Startup lock:', poolLockedReason);
     }
