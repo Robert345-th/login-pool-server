@@ -44,7 +44,7 @@ setInterval(async () => {
     const now = Date.now();
     for (const acc of accounts) {
         if (acc.status === 'IN-USE' && acc.logoutTime && (now - acc.logoutTime >= TWENTY_FOUR_HOURS_MS)) {
-            await updateAccount(acc.phone, { status: 'FREE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: null });
+            await updateAccount(acc.phone, { status: 'FREE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: null, inUseSince: null, tabId: null, freedAt: Date.now() });
         }
     }
 }, 60 * 1000);
@@ -506,7 +506,17 @@ app.get('/', async (req, res) => {
 
 app.get('/view/free', async (req, res) => {
     const accounts = await getAccounts();
-    const list = accounts.filter(a => a.status === 'FREE');
+    const list = accounts
+        .filter(a => a.status === 'FREE')
+        .sort((a, b) => {
+            // Accounts with a logout_time were previously used — sort those
+            // by most recently freed first. Never-used accounts (no logout_time)
+            // go to the bottom.
+            if (a.logoutTime && b.logoutTime) return b.logoutTime - a.logoutTime;
+            if (a.logoutTime) return -1;
+            if (b.logoutTime) return 1;
+            return 0;
+        });
     res.send(listPage('Free Accounts', list.length + ' accounts ready', list, 'free'));
 });
 
@@ -593,7 +603,8 @@ app.get('/view/inuse', async (req, res) => {
 app.get('/view/waiting', async (req, res) => {
     const accounts = await getAccounts();
     const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
-        .map(a => ({ phone: a.phone, freeAt: a.logoutTime + TWENTY_FOUR_HOURS_MS, logoutTimeStr: a.logoutTimeStr }));
+        .map(a => ({ phone: a.phone, freeAt: a.logoutTime + TWENTY_FOUR_HOURS_MS, logoutTimeStr: a.logoutTimeStr }))
+        .sort((a, b) => a.freeAt - b.freeAt); // soonest free first
     res.send(waitingPage(list));
 });
 
@@ -640,6 +651,9 @@ app.post('/remove-bad-password', async (req, res) => {
 app.post('/request-login', async (req, res) => {
     if (poolLocked) return res.json({ success: false, error: `Pool locked. ${poolLockedReason}` });
     const { tabId } = req.body;
+    // Reject any request that doesn't include a tab ID — every tab must
+    // identify itself so the server can track account ownership correctly.
+    if (!tabId) return res.json({ success: false, error: 'Tab ID required. No account will be assigned without one.' });
     try {
         const { hour, minute } = getZambiaTime();
         const timeStr = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
