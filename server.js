@@ -16,6 +16,7 @@ const {
     UNLOCK_MINUTE,
     REMOVE_PASSWORD,
     HEARTBEAT_TIMEOUT_MS,
+    IN_USE_TIMEOUT_MS,
 } = require('./accounts');
 
 const app = express();
@@ -46,20 +47,23 @@ setInterval(async () => {
     }
 }, 60 * 1000);
 
-// Heartbeat timeout check
+// 5-hour in-use timeout — if an account has been IN-USE for more than 5
+// hours without a real logout, move it to Waiting 24h automatically.
+// This replaces the old heartbeat-timeout logic: the only two ways an
+// account now leaves IN-USE are a real /logout call, or 5 hours elapsing.
 setInterval(async () => {
     const accounts = await getAccounts();
     const now = Date.now();
     for (const acc of accounts) {
-        if (acc.status === 'IN-USE' && !acc.logoutTime && acc.lastHeartbeat) {
-            if (now - acc.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+        if (acc.status === 'IN-USE' && !acc.logoutTime && acc.inUseSince) {
+            if (now - acc.inUseSince > IN_USE_TIMEOUT_MS) {
                 const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                console.log(`Heartbeat lost for ${acc.phone}. Moving to waiting.`);
-                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (tab closed)' });
+                console.log(`Account ${acc.phone} has been IN-USE for 5h. Moving to waiting.`);
+                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (5h timeout)' });
             }
         }
     }
-}, 10 * 1000);
+}, 60 * 1000);
 
 // Pool lock check
 setInterval(async () => {
@@ -69,6 +73,7 @@ setInterval(async () => {
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
 
+    // Determine if we should be locked right now
     const isNightTime = hour >= 18 || hour < UNLOCK_HOUR || (hour === UNLOCK_HOUR && minute < UNLOCK_MINUTE);
     const isLowAccounts = freeCount <= FREE_ACCOUNT_LOCK_THRESHOLD;
 
@@ -118,37 +123,6 @@ app.post('/heartbeat', async (req, res) => {
         return res.json({ success: true });
     }
     res.json({ success: false, error: 'Account not found or not in use.' });
-});
-
-// Fired by navigator.sendBeacon the instant a tab actually closes (real close,
-// not a connection drop). Moves the account straight to "Waiting 24h" right
-// away instead of waiting for the heartbeat timeout to expire. sendBeacon
-// requests don't carry a normal JSON content-type reliably across browsers,
-// so we read the raw body and parse it manually here.
-app.post('/tab-closed', express.text({ type: '*/*' }), async (req, res) => {
-    try {
-        let phone;
-        if (typeof req.body === 'string') {
-            const parsed = JSON.parse(req.body);
-            phone = parsed.phone;
-        } else if (req.body && req.body.phone) {
-            phone = req.body.phone;
-        }
-        if (!phone) return res.json({ success: false, error: 'Phone required.' });
-
-        const accounts = await getAccounts();
-        const account = accounts.find(a => a.phone === phone);
-        if (account && account.status === 'IN-USE' && !account.logoutTime) {
-            const now = new Date();
-            const timeStr = pad(now.getHours()) + ':' + pad(now.getMinutes());
-            console.log(`Tab closed signal received for ${phone}. Moving to waiting.`);
-            await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (tab closed)' });
-        }
-        res.json({ success: true });
-    } catch (e) {
-        console.error('tab-closed error:', e);
-        res.json({ success: false });
-    }
 });
 
 function waitingPage(rows) {
@@ -624,10 +598,6 @@ app.post('/remove-bad-password', async (req, res) => {
     res.json({ success: true });
 });
 
-// FIXED: now uses claimFreeAccount(), an atomic SQL transaction with
-// FOR UPDATE SKIP LOCKED, instead of a separate read+write. This guarantees
-// that when many tabs call this endpoint at the same moment, each one gets
-// a DIFFERENT account and the database update can never be lost or overwritten.
 app.post('/request-login', async (req, res) => {
     if (poolLocked) return res.json({ success: false, error: `Pool locked until 07:30. ${poolLockedReason}` });
     try {
@@ -658,7 +628,7 @@ app.post('/logout', async (req, res) => {
     const accounts = await getAccounts();
     const account = accounts.find(a => a.phone === phone);
     if (account) {
-        await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null });
+        await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null, inUseSince: null });
         return res.json({ success: true, message: `Account ${phone} logged out. Will free after 24h.` });
     }
     return res.json({ success: false, error: 'Account not found.' });
@@ -681,7 +651,9 @@ app.post('/reset', async (req, res) => {
     res.json({ success: true });
 });
 
+// Start server after DB is ready
 initDB().then(async () => {
+    // Check lock state immediately on startup
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
