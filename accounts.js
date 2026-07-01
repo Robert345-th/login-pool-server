@@ -7,8 +7,15 @@ const pool = new Pool({
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
-const UNLOCK_HOUR = 7;
-const UNLOCK_MINUTE = 30;
+// New lock schedule:
+// - Time lock: 07:30 to 13:00 (pool locked, no accounts dispensed)
+// - Low account lock: only from 14:30 onwards, locks if free < 50
+const LOCK_START_HOUR = 7;
+const LOCK_START_MINUTE = 30;
+const LOCK_END_HOUR = 13;
+const LOCK_END_MINUTE = 0;
+const LOW_ACCOUNT_LOCK_HOUR = 14;
+const LOW_ACCOUNT_LOCK_MINUTE = 30;
 const REMOVE_PASSWORD = '1234';
 const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000; // kept for heartbeat display only
 const IN_USE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours — max time IN-USE before auto-move to Waiting
@@ -22,13 +29,13 @@ async function initDB() {
             logout_time BIGINT DEFAULT NULL,
             logout_time_str TEXT DEFAULT NULL,
             last_heartbeat BIGINT DEFAULT NULL,
-            in_use_since BIGINT DEFAULT NULL
+            in_use_since BIGINT DEFAULT NULL,
+            tab_id TEXT DEFAULT NULL
         );
     `);
-    // Add in_use_since column to existing databases that don't have it yet
-    await pool.query(`
-        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS in_use_since BIGINT DEFAULT NULL;
-    `);
+    // Add columns to existing databases that don't have them yet
+    await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS in_use_since BIGINT DEFAULT NULL;`);
+    await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tab_id TEXT DEFAULT NULL;`);
     await pool.query(`
         CREATE TABLE IF NOT EXISTS bad_password_accounts (
             phone TEXT PRIMARY KEY,
@@ -520,10 +527,31 @@ async function getAccounts() {
         logoutTimeStr: r.logout_time_str,
         lastHeartbeat: r.last_heartbeat ? Number(r.last_heartbeat) : null,
         inUseSince: r.in_use_since ? Number(r.in_use_since) : null,
+        tabId: r.tab_id || null,
     }));
 }
 
-async function claimFreeAccount(heartbeatNow) {
+// Find an IN-USE account currently held by a specific tab ID
+async function getAccountByTabId(tabId) {
+    const { rows } = await pool.query(
+        `SELECT * FROM accounts WHERE tab_id = $1 AND status = 'IN-USE' AND logout_time IS NULL LIMIT 1`,
+        [tabId]
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+        phone: r.phone,
+        password: r.password,
+        status: r.status,
+        logoutTime: r.logout_time ? Number(r.logout_time) : null,
+        logoutTimeStr: r.logout_time_str,
+        lastHeartbeat: r.last_heartbeat ? Number(r.last_heartbeat) : null,
+        inUseSince: r.in_use_since ? Number(r.in_use_since) : null,
+        tabId: r.tab_id || null,
+    };
+}
+
+async function claimFreeAccount(heartbeatNow, tabId) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -540,8 +568,8 @@ async function claimFreeAccount(heartbeatNow) {
         }
         const { phone, password } = rows[0];
         await client.query(
-            `UPDATE accounts SET status = 'IN-USE', logout_time = NULL, logout_time_str = NULL, last_heartbeat = $2, in_use_since = $2 WHERE phone = $1`,
-            [phone, heartbeatNow]
+            `UPDATE accounts SET status = 'IN-USE', logout_time = NULL, logout_time_str = NULL, last_heartbeat = $2, in_use_since = $2, tab_id = $3 WHERE phone = $1`,
+            [phone, heartbeatNow, tabId || null]
         );
         await client.query('COMMIT');
         return { phone, password };
@@ -554,7 +582,7 @@ async function claimFreeAccount(heartbeatNow) {
 }
 
 async function updateAccount(phone, fields) {
-    const map = { logoutTime: 'logout_time', logoutTimeStr: 'logout_time_str', lastHeartbeat: 'last_heartbeat', status: 'status', inUseSince: 'in_use_since' };
+    const map = { logoutTime: 'logout_time', logoutTimeStr: 'logout_time_str', lastHeartbeat: 'last_heartbeat', status: 'status', inUseSince: 'in_use_since', tabId: 'tab_id' };
     const keys = Object.keys(fields);
     const setClauses = keys.map((k, i) => `${map[k]} = $${i + 1}`).join(', ');
     const values = [...keys.map(k => fields[k]), phone];
@@ -573,7 +601,7 @@ async function removeAccount(phone) {
 }
 
 async function resetAllAccounts() {
-    await pool.query(`UPDATE accounts SET status = 'FREE', logout_time = NULL, logout_time_str = NULL, last_heartbeat = NULL, in_use_since = NULL`);
+    await pool.query(`UPDATE accounts SET status = 'FREE', logout_time = NULL, logout_time_str = NULL, last_heartbeat = NULL, in_use_since = NULL, tab_id = NULL`);
 }
 
 async function getBadPasswordAccounts() {
@@ -596,6 +624,7 @@ module.exports = {
     pool,
     initDB,
     getAccounts,
+    getAccountByTabId,
     claimFreeAccount,
     updateAccount,
     addAccount,
@@ -606,8 +635,12 @@ module.exports = {
     removeBadPasswordAccount,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
-    UNLOCK_HOUR,
-    UNLOCK_MINUTE,
+    LOCK_START_HOUR,
+    LOCK_START_MINUTE,
+    LOCK_END_HOUR,
+    LOCK_END_MINUTE,
+    LOW_ACCOUNT_LOCK_HOUR,
+    LOW_ACCOUNT_LOCK_MINUTE,
     REMOVE_PASSWORD,
     HEARTBEAT_TIMEOUT_MS,
     IN_USE_TIMEOUT_MS,
