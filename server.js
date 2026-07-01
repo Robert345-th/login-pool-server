@@ -124,6 +124,11 @@ app.get('/inuse-stats', async (req, res) => {
     const accounts = await getAccounts();
     const list = accounts
         .filter(a => a.status === 'IN-USE' && !a.logoutTime)
+        .sort((a, b) => {
+            const aNum = a.tabId ? parseInt(a.tabId.replace('TAB-', '')) : 9999;
+            const bNum = b.tabId ? parseInt(b.tabId.replace('TAB-', '')) : 9999;
+            return aNum - bNum;
+        })
         .map(a => ({ phone: a.phone, lastHeartbeat: a.lastHeartbeat, tabId: a.tabId }));
     res.json(list);
 });
@@ -494,7 +499,14 @@ app.get('/view/free', async (req, res) => {
 
 app.get('/view/inuse', async (req, res) => {
     const accounts = await getAccounts();
-    const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
+    const list = accounts
+        .filter(a => a.status === 'IN-USE' && !a.logoutTime)
+        .sort((a, b) => {
+            // Sort by tab ID number e.g. TAB-001 < TAB-002
+            const aNum = a.tabId ? parseInt(a.tabId.replace('TAB-', '')) : 9999;
+            const bNum = b.tabId ? parseInt(b.tabId.replace('TAB-', '')) : 9999;
+            return aNum - bNum;
+        });
     const rowsHtml = list.length
         ? list.map((r, i) => `
             <div class="row" data-phone="${r.phone}">
