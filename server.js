@@ -49,19 +49,32 @@ setInterval(async () => {
     }
 }, 60 * 1000);
 
-// 5-hour in-use timeout — if an account has been IN-USE for more than 5
-// hours without a real logout, move it to Waiting 24h automatically.
-// This replaces the old heartbeat-timeout logic: the only two ways an
-// account now leaves IN-USE are a real /logout call, or 5 hours elapsing.
+const HEARTBEAT_SILENCE_TIMEOUT_MS = 10 * 60 * 60 * 1000; // 10 hours of no heartbeat
+
+// Two timeout checks run together every 60 seconds:
+// 1. 5-hour in-use timeout — account has been IN-USE for 5h straight
+// 2. 10-hour heartbeat silence — no heartbeat received for 10h straight
+// Either condition moves the account to Waiting 24h.
 setInterval(async () => {
     const accounts = await getAccounts();
     const now = Date.now();
     for (const acc of accounts) {
-        if (acc.status === 'IN-USE' && !acc.logoutTime && acc.inUseSince) {
-            if (now - acc.inUseSince > IN_USE_TIMEOUT_MS) {
-                const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        if (acc.status === 'IN-USE' && !acc.logoutTime) {
+            const { hour, minute } = getZambiaTime();
+            const timeStr = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
+
+            // Check 1: 5-hour in-use timeout
+            if (acc.inUseSince && now - acc.inUseSince > IN_USE_TIMEOUT_MS) {
                 console.log(`Account ${acc.phone} has been IN-USE for 5h. Moving to waiting.`);
-                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (5h timeout)' });
+                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (5h timeout)', inUseSince: null, tabId: null });
+                continue;
+            }
+
+            // Check 2: 10-hour heartbeat silence timeout
+            if (acc.lastHeartbeat && now - acc.lastHeartbeat > HEARTBEAT_SILENCE_TIMEOUT_MS) {
+                console.log(`Account ${acc.phone} has had no heartbeat for 10h. Moving to waiting.`);
+                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (10h no heartbeat)', inUseSince: null, tabId: null });
+                continue;
             }
         }
     }
