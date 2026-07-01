@@ -1,5 +1,621 @@
-const express = require('express');
-const {
+const { Pool } = require('pg');
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
+
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const FREE_ACCOUNT_LOCK_THRESHOLD = 50;
+// Low account lock only applies from 14:30 onwards (Zambia time)
+const LOW_ACCOUNT_LOCK_HOUR = 14;
+const LOW_ACCOUNT_LOCK_MINUTE = 30;
+const REMOVE_PASSWORD = '1234';
+const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000; // kept for heartbeat display only
+const IN_USE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours — max time IN-USE before auto-move to Waiting
+
+async function initDB() {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS accounts (
+            phone TEXT PRIMARY KEY,
+            password TEXT NOT NULL,
+            status TEXT DEFAULT 'FREE',
+            logout_time BIGINT DEFAULT NULL,
+            logout_time_str TEXT DEFAULT NULL,
+            last_heartbeat BIGINT DEFAULT NULL,
+            in_use_since BIGINT DEFAULT NULL,
+            tab_id TEXT DEFAULT NULL
+        );
+    `);
+    // Add columns to existing databases that don't have them yet
+    await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS in_use_since BIGINT DEFAULT NULL;`);
+    await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tab_id TEXT DEFAULT NULL;`);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS bad_password_accounts (
+            phone TEXT PRIMARY KEY,
+            password TEXT,
+            reported_at TEXT,
+            status TEXT DEFAULT 'BAD_PASSWORD'
+        );
+    `);
+
+    const { rowCount } = await pool.query('SELECT 1 FROM accounts LIMIT 1');
+    if (rowCount === 0) {
+        const phoneList = [
+            ["571460072","R0978012009"],
+            ["573015909","R0978012009"],
+            ["573058843","R0978012009"],
+            ["573089372","R0978012009"],
+            ["573104642","R0978012009"],
+            ["573135488","R0978012009"],
+            ["573164297","R0978012009"],
+            ["573197599","R0978012009"],
+            ["573213942","R0978012009"],
+            ["573271807","R0978012009"],
+            ["573279568","R0978012009"],
+            ["573384775","R0978012009"],
+            ["573507265","R0978012009"],
+            ["574015146","R0978012009"],
+            ["574040623","R0978012009"],
+            ["574048581","R0978012009"],
+            ["574076004","R0978012009"],
+            ["574084944","R0978012009"],
+            ["574084945","R0978012009"],
+            ["574084951","R0978012009"],
+            ["574084958","R0978012009"],
+            ["574086452","R0978012009"],
+            ["574093035","R0978012009"],
+            ["574111341","R0978012009"],
+            ["574111345","R0978012009"],
+            ["574125189","R0978012009"],
+            ["574125193","R0978012009"],
+            ["574126252","R0978012009"],
+            ["574128995","R0978012009"],
+            ["574138274","R0978012009"],
+            ["574138365","R0978012009"],
+            ["574138371","R0978012009"],
+            ["574138373","R0978012009"],
+            ["574138374","R0978012009"],
+            ["574138376","R0978012009"],
+            ["574142225","R0978012009"],
+            ["574145023","R0978012009"],
+            ["574153024","R0978012009"],
+            ["574153025","R0978012009"],
+            ["574153026","R0978012009"],
+            ["574153027","R0978012009"],
+            ["574153031","R0978012009"],
+            ["574153032","R0978012009"],
+            ["574153033","R0978012009"],
+            ["574153091","R0978012009"],
+            ["574153093","R0978012009"],
+            ["574153094","R0978012009"],
+            ["574167658","R0978012009"],
+            ["574167662","R0978012009"],
+            ["574191028","R0978012009"],
+            ["574195196","R0978012009"],
+            ["574195197","R0978012009"],
+            ["574195202","R0978012009"],
+            ["574195203","R0978012009"],
+            ["574203225","R0978012009"],
+            ["574203227","R0978012009"],
+            ["574203229","R0978012009"],
+            ["574203235","R0978012009"],
+            ["574219118","R0978012009"],
+            ["574219727","R0978012009"],
+            ["574219728","R0978012009"],
+            ["574219730","R0978012009"],
+            ["574219767","R0978012009"],
+            ["574219769","R0978012009"],
+            ["574219771","R0978012009"],
+            ["574219772","R0978012009"],
+            ["574219774","R0978012009"],
+            ["574219788","R0978012009"],
+            ["574219794","R0978012009"],
+            ["574219908","R0978012009"],
+            ["574219916","R0978012009"],
+            ["574219917","R0978012009"],
+            ["574219978","R0978012009"],
+            ["574219985","R0978012009"],
+            ["574222113","R0978012009"],
+            ["574238034","R0978012009"],
+            ["574238038","R0978012009"],
+            ["574238215","R0978012009"],
+            ["574238217","R0978012009"],
+            ["574238234","R0978012009"],
+            ["574238235","R0978012009"],
+            ["574238236","R0978012009"],
+            ["574238237","R0978012009"],
+            ["574252030","R0978012009"],
+            ["574522423","R0978012009"],
+            ["574543169","R0978012009"],
+            ["574552423","R0978012009"],
+            ["574555649","R0978012009"],
+            ["574555680","R0978012009"],
+            ["574555706","R0978012009"],
+            ["574555717","R0978012009"],
+            ["574559302","R0978012009"],
+            ["574576597","R0978012009"],
+            ["574576605","R0978012009"],
+            ["574576734","R0978012009"],
+            ["574601393","R0978012009"],
+            ["574601471","R0978012009"],
+            ["574604172","R0978012009"],
+            ["574604173","R0978012009"],
+            ["574604175","R0978012009"],
+            ["574604316","R0978012009"],
+            ["574604318","R0978012009"],
+            ["574604322","R0978012009"],
+            ["574604324","R0978012009"],
+            ["574604327","R0978012009"],
+            ["574604329","R0978012009"],
+            ["574607021","R0978012009"],
+            ["574623403","R0978012009"],
+            ["574623447","R0978012009"],
+            ["574623467","R0978012009"],
+            ["574623472","R0978012009"],
+            ["574638143","R0978012009"],
+            ["574638147","R0978012009"],
+            ["574638160","R0978012009"],
+            ["574641470","R0978012009"],
+            ["574641473","R0978012009"],
+            ["574641535","R0978012009"],
+            ["574641543","R0978012009"],
+            ["574641548","R0978012009"],
+            ["574939790","R0978012009"],
+            ["574939915","R0978012009"],
+            ["574939931","R0978012009"],
+            ["574939954","R0978012009"],
+            ["574939958","R0978012009"],
+            ["574940262","R0978012009"],
+            ["574940273","R0978012009"],
+            ["574960430","R0978012009"],
+            ["574960432","R0978012009"],
+            ["574960435","R0978012009"],
+            ["574960438","R0978012009"],
+            ["574976516","R0978012009"],
+            ["574976553","R0978012009"],
+            ["574976555","R0978012009"],
+            ["574976632","R0978012009"],
+            ["574987388","R0978012009"],
+            ["574987392","R0978012009"],
+            ["574987395","R0978012009"],
+            ["574987396","R0978012009"],
+            ["574987406","R0978012009"],
+            ["574987407","R0978012009"],
+            ["574987408","R0978012009"],
+            ["574987429","R0978012009"],
+            ["574987438","R0978012009"],
+            ["574987469","R0978012009"],
+            ["574987540","R0978012009"],
+            ["574987708","R0978012009"],
+            ["574987758","R0978012009"],
+            ["750054275","R0978012009"],
+            ["750076052","R0978012009"],
+            ["750105130","R0978012009"],
+            ["750105475","R0978012009"],
+            ["760008520","R0978012009"],
+            ["760017804","R0978012009"],
+            ["760017807","R0978012009"],
+            ["760019171","R0978012009"],
+            ["760019369","R0978012009"],
+            ["760020871","R0978012009"],
+            ["760027462","R0978012009"],
+            ["760027536","R0978012009"],
+            ["760037223","R0978012009"],
+            ["760037324","R0978012009"],
+            ["760074987","R0978012009"],
+            ["760160765","R0978012009"],
+            ["760177351","R0978012009"],
+            ["760195399","R0978012009"],
+            ["760266305","R0978012009"],
+            ["760457548","R0978012009"],
+            ["760656973","R0978012009"],
+            ["760657394","R0978012009"],
+            ["760657467","R0978012009"],
+            ["760657486","R0978012009"],
+            ["760657528","R0978012009"],
+            ["760657534","R0978012009"],
+            ["760657740","R0978012009"],
+            ["760657882","R0978012009"],
+            ["760657895","R0978012009"],
+            ["760658096","R0978012009"],
+            ["760658232","R0978012009"],
+            ["760659173","R0978012009"],
+            ["760659593","R0978012009"],
+            ["760659860","R0978012009"],
+            ["760659969","R0978012009"],
+            ["760659984","R0978012009"],
+            ["760660103","R0978012009"],
+            ["760660319","R0978012009"],
+            ["760660499","R0978012009"],
+            ["760661497","R0978012009"],
+            ["760662239","R0978012009"],
+            ["760662878","R0978012009"],
+            ["760663884","R0978012009"],
+            ["760664231","R0978012009"],
+            ["760664269","R0978012009"],
+            ["760664592","R0978012009"],
+            ["760665924","R0978012009"],
+            ["760667148","R0978012009"],
+            ["760667192","R0978012009"],
+            ["760667514","R0978012009"],
+            ["760674231","R0978012009"],
+            ["760706164","R0978012009"],
+            ["760786373","R0978012009"],
+            ["760925766","R0978012009"],
+            ["761796281","R0978012009"],
+            ["761892845","R0978012009"],
+            ["762007347","R0978012009"],
+            ["762063486","R0978012009"],
+            ["762074840","R0978012009"],
+            ["762129809","R0978012009"],
+            ["762141092","R0978012009"],
+            ["762145187","R0978012009"],
+            ["762151365","R0978012009"],
+            ["762161544","R0978012009"],
+            ["762169222","R0978012009"],
+            ["762169977","R0978012009"],
+            ["762171584","R0978012009"],
+            ["762174681","R0978012009"],
+            ["762178046","R0978012009"],
+            ["762184757","R0978012009"],
+            ["762189866","R0978012009"],
+            ["762192490","R0978012009"],
+            ["762195449","R0978012009"],
+            ["762211416","R0978012009"],
+            ["762231722","R0978012009"],
+            ["762252702","R0978012009"],
+            ["762326391","R0978012009"],
+            ["762482882","R0978012009"],
+            ["762482887","R0978012009"],
+            ["762483133","R0978012009"],
+            ["762483160","R0978012009"],
+            ["762483161","R0978012009"],
+            ["762483226","R0978012009"],
+            ["762483249","R0978012009"],
+            ["762483440","R0978012009"],
+            ["762483446","R0978012009"],
+            ["762483510","R0978012009"],
+            ["762483593","R0978012009"],
+            ["762483836","R0978012009"],
+            ["762483842","R0978012009"],
+            ["762483933","R0978012009"],
+            ["762484350","R0978012009"],
+            ["762484481","R0978012009"],
+            ["762484506","R0978012009"],
+            ["762484532","R0978012009"],
+            ["762484535","R0978012009"],
+            ["762484538","R0978012009"],
+            ["762484544","R0978012009"],
+            ["762484670","R0978012009"],
+            ["762578180","R0978012009"],
+            ["762680063","R0978012009"],
+            ["762689437","R0978012009"],
+            ["763066527","R0978012009"],
+            ["763131867","R0978012009"],
+            ["763138332","R0978012009"],
+            ["763145338","R0978012009"],
+            ["763147163","R0978012009"],
+            ["763154094","R0978012009"],
+            ["763169829","R0978012009"],
+            ["763185490","R0978012009"],
+            ["763185516","R0978012009"],
+            ["763190212","R0978012009"],
+            ["763190273","R0978012009"],
+            ["763194150","R0978012009"],
+            ["763207608","R0978012009"],
+            ["763233600","R0978012009"],
+            ["763434634","R0978012009"],
+            ["763525617","R0978012009"],
+            ["763677963","R0978012009"],
+            ["763779197","R0978012009"],
+            ["763796091","R0978012009"],
+            ["764112407","R0978012009"],
+            ["764264631","R0978012009"],
+            ["764281301","R0978012009"],
+            ["764287793","R0978012009"],
+            ["764315103","R0978012009"],
+            ["764353412","R0978012009"],
+            ["764358907","R0978012009"],
+            ["764374600","R0978012009"],
+            ["764464883","R0978012009"],
+            ["764612871","R0978012009"],
+            ["764616802","R0978012009"],
+            ["764641888","R0978012009"],
+            ["764643223","R0978012009"],
+            ["764646883","R0978012009"],
+            ["764647719","R0978012009"],
+            ["764748154","R0978012009"],
+            ["764764653","R0978012009"],
+            ["764798266","R0978012009"],
+            ["764834244","R0978012009"],
+            ["764834484","R0978012009"],
+            ["764884784","R0978012009"],
+            ["764884969","R0978012009"],
+            ["764893496","R0978012009"],
+            ["764894585","R0978012009"],
+            ["764943156","R0978012009"],
+            ["764952884","R0978012009"],
+            ["764959540","R0978012009"],
+            ["764961915","R0978012009"],
+            ["765014985","R0978012009"],
+            ["765541540","R0978012009"],
+            ["765650610","R0978012009"],
+            ["765801758","R0978012009"],
+            ["765884396","R0978012009"],
+            ["766254071","R0978012009"],
+            ["766254179","R0978012009"],
+            ["766254407","R0978012009"],
+            ["766254434","R0978012009"],
+            ["766254492","R0978012009"],
+            ["766254520","R0978012009"],
+            ["766254865","R0978012009"],
+            ["766254916","R0978012009"],
+            ["766254928","R0978012009"],
+            ["766254960","R0978012009"],
+            ["766315565","R0978012009"],
+            ["766371430","R0978012009"],
+            ["766843595","R0978012009"],
+            ["766962275","R0978012009"],
+            ["767043412","R0978012009"],
+            ["767069228","R0978012009"],
+            ["767713636","R0978012009"],
+            ["768267124","R0978012009"],
+            ["768286318","R0978012009"],
+            ["768355864","R0978012009"],
+            ["768659928","R0978012009"],
+            ["768998482","R0978012009"],
+            ["768998782","R0978012009"],
+            ["769193788","R0978012009"],
+            ["769649561","R0978012009"],
+            ["769716107","R0978012009"],
+            ["769754565","R0978012009"],
+            ["770105510","R0978012009"],
+            ["770942244","R0978012009"],
+            ["770951404","R0978012009"],
+            ["771159984","R0978012009"],
+            ["771952763","R0978012009"],
+            ["771954572","R0978012009"],
+            ["771954658","R0978012009"],
+            ["771956959","R0978012009"],
+            ["771994157","R0978012009"],
+            ["777263261","R0978012009"],
+            ["778220827","R0978012009"],
+            ["778227919","R0978012009"],
+            ["778228223","R0978012009"],
+            ["778237631","R0978012009"],
+            ["778237633","R0978012009"],
+            ["778301584","R0978012009"],
+            ["778301604","R0978012009"],
+            ["779171327","R0978012009"],
+            ["779171390","R0978012009"],
+            ["779171438","R0978012009"],
+            ["953583621","R0978012009"],
+            ["953583623","R0978012009"],
+            ["953584706","R0978012009"],
+            ["953658753","R0978012009"],
+            ["953659386","R0978012009"],
+            ["953690649","R0978012009"],
+            ["955216051","R0978012009"],
+            ["956207230","R0978012009"],
+            ["960258667","R0978012009"],
+            ["960293652","R0978012009"],
+            ["960674231","R0978012009"],
+            ["960981870","R0978012009"],
+            ["961153918","R0978012009"],
+            ["961250238","R0978012009"],
+            ["961341025","R0978012009"],
+            ["961698321","R0978012009"],
+            ["961883854","R0978012009"],
+            ["962068151","R0978012009"],
+            ["962206748","R0978012009"],
+            ["962372176","R0978012009"],
+            ["962386121","R0978012009"],
+            ["962584596","R0978012009"],
+            ["962871032","R0978012009"],
+            ["962873158","R0978012009"],
+            ["962878301","R0978012009"],
+            ["962946692","R0978012009"],
+            ["963121772","R0978012009"],
+            ["963160727","R0978012009"],
+            ["963170043","R0978012009"],
+            ["963191154","R0978012009"],
+            ["963193039","R0978012009"],
+            ["963528239","R0978012009"],
+            ["963544898","R0978012009"],
+            ["963609665","R0978012009"],
+            ["963629888","R0978012009"],
+            ["963694417","R0978012009"],
+            ["963708556","R0978012009"],
+            ["963717220","R0978012009"],
+            ["963801205","R0978012009"],
+            ["963841384","R0978012009"],
+            ["963876371","R0978012009"],
+            ["964158220","R0978012009"],
+            ["964216728","R0978012009"],
+            ["964218931","R0978012009"],
+            ["964305408","R0978012009"],
+            ["964367610","R0978012009"],
+            ["964548395","R0978012009"],
+            ["964548910","R0978012009"],
+            ["964577765","R0978012009"],
+            ["964597345","R0978012009"],
+            ["964689702","R0978012009"],
+            ["964819491","R0978012009"],
+            ["964834027","R0978012009"],
+            ["964918640","R0978012009"],
+            ["965185421","R0978012009"],
+            ["965563794","R0978012009"],
+            ["965606200","R0978012009"],
+            ["965650610","R0978012009"],
+            ["965699297","R0978012009"],
+            ["965946856","R0978012009"],
+            ["965979179","R0978012009"],
+            ["966081954","R0978012009"],
+            ["966135238","R0978012009"],
+            ["966318836","R0978012009"],
+            ["966506432","R0978012009"],
+            ["966652119","R0978012009"],
+            ["966856823","R0978012009"],
+            ["967112315","R0978012009"],
+            ["967429152","R0978012009"],
+            ["967450294","R0978012009"],
+            ["967554565","R0978012009"],
+            ["967758637","R0978012009"],
+            ["967993144","R0978012009"],
+            ["968019430","R0978012009"],
+            ["968047294","R0978012009"],
+            ["968103661","R0978012009"],
+            ["968154969","R0978012009"],
+            ["968249428","R0978012009"],
+            ["968274817","R0978012009"],
+            ["968305495","R0978012009"],
+            ["968418911","R0978012009"],
+            ["968436080","R0978012009"],
+            ["968437139","R0978012009"],
+            ["968527450","R0978012009"],
+            ["968607946","R0978012009"],
+            ["968755729","R0978012009"],
+            ["968912910","R0978012009"],
+            ["968913044","R0978012009"],
+            ["968919845","R0978012009"],
+            ["968990951","R0978012009"],
+            ["969017761","R0978012009"],
+            ["969024404","R0978012009"],
+            ["969058463","R0978012009"],
+            ["969179357","R0978012009"],
+            ["969193788","R0978012009"],
+            ["969308398","R0978012009"],
+            ["969385082","R0978012009"],
+            ["969481098","R0978012009"],
+            ["969486004","R0978012009"],
+            ["969526174","R0978012009"],
+            ["969544410","R0978012009"],
+            ["969597132","R0978012009"],
+            ["969729415","R0978012009"],
+            ["969757291","R0978012009"],
+            ["969980372","R0978012009"],
+            ["973823738","R0978012009"],
+        ];
+        const values = [];
+        const placeholders = [];
+        phoneList.forEach(([phone, password], i) => {
+            placeholders.push(`($${i * 2 + 1}, $${i * 2 + 2})`);
+            values.push(phone, password);
+        });
+        await pool.query(
+            `INSERT INTO accounts (phone, password) VALUES ${placeholders.join(', ')} ON CONFLICT DO NOTHING`,
+            values
+        );
+        console.log('Accounts seeded into database.');
+    }
+}
+
+async function getAccounts() {
+    const { rows } = await pool.query('SELECT * FROM accounts ORDER BY phone ASC');
+    return rows.map(r => ({
+        phone: r.phone,
+        password: r.password,
+        status: r.status,
+        logoutTime: r.logout_time ? Number(r.logout_time) : null,
+        logoutTimeStr: r.logout_time_str,
+        lastHeartbeat: r.last_heartbeat ? Number(r.last_heartbeat) : null,
+        inUseSince: r.in_use_since ? Number(r.in_use_since) : null,
+        tabId: r.tab_id || null,
+    }));
+}
+
+// Find an IN-USE account currently held by a specific tab ID
+async function getAccountByTabId(tabId) {
+    const { rows } = await pool.query(
+        `SELECT * FROM accounts WHERE tab_id = $1 AND status = 'IN-USE' AND logout_time IS NULL LIMIT 1`,
+        [tabId]
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+        phone: r.phone,
+        password: r.password,
+        status: r.status,
+        logoutTime: r.logout_time ? Number(r.logout_time) : null,
+        logoutTimeStr: r.logout_time_str,
+        lastHeartbeat: r.last_heartbeat ? Number(r.last_heartbeat) : null,
+        inUseSince: r.in_use_since ? Number(r.in_use_since) : null,
+        tabId: r.tab_id || null,
+    };
+}
+
+async function claimFreeAccount(heartbeatNow, tabId) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(`
+            SELECT phone, password FROM accounts
+            WHERE status = 'FREE'
+            ORDER BY phone
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        `);
+        if (rows.length === 0) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+        const { phone, password } = rows[0];
+        await client.query(
+            `UPDATE accounts SET status = 'IN-USE', logout_time = NULL, logout_time_str = NULL, last_heartbeat = $2, in_use_since = $2, tab_id = $3 WHERE phone = $1`,
+            [phone, heartbeatNow, tabId || null]
+        );
+        await client.query('COMMIT');
+        return { phone, password };
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
+async function updateAccount(phone, fields) {
+    const map = { logoutTime: 'logout_time', logoutTimeStr: 'logout_time_str', lastHeartbeat: 'last_heartbeat', status: 'status', inUseSince: 'in_use_since', tabId: 'tab_id' };
+    const keys = Object.keys(fields);
+    const setClauses = keys.map((k, i) => `${map[k]} = $${i + 1}`).join(', ');
+    const values = [...keys.map(k => fields[k]), phone];
+    await pool.query(`UPDATE accounts SET ${setClauses} WHERE phone = $${values.length}`, values);
+}
+
+async function addAccount(phone, password) {
+    await pool.query(
+        `INSERT INTO accounts (phone, password, status) VALUES ($1, $2, 'FREE')`,
+        [phone, password]
+    );
+}
+
+async function removeAccount(phone) {
+    await pool.query('DELETE FROM accounts WHERE phone = $1', [phone]);
+}
+
+async function resetAllAccounts() {
+    await pool.query(`UPDATE accounts SET status = 'FREE', logout_time = NULL, logout_time_str = NULL, last_heartbeat = NULL, in_use_since = NULL, tab_id = NULL`);
+}
+
+async function getBadPasswordAccounts() {
+    const { rows } = await pool.query('SELECT * FROM bad_password_accounts');
+    return rows.map(r => ({ phone: r.phone, password: r.password, reportedAt: r.reported_at, status: r.status }));
+}
+
+async function addBadPasswordAccount(phone, password, reportedAt) {
+    await pool.query(
+        `INSERT INTO bad_password_accounts (phone, password, reported_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [phone, password, reportedAt]
+    );
+}
+
+async function removeBadPasswordAccount(phone) {
+    await pool.query('DELETE FROM bad_password_accounts WHERE phone = $1', [phone]);
+}
+
+module.exports = {
+    pool,
     initDB,
     getAccounts,
     getAccountByTabId,
@@ -18,690 +634,4 @@ const {
     REMOVE_PASSWORD,
     HEARTBEAT_TIMEOUT_MS,
     IN_USE_TIMEOUT_MS,
-} = require('./accounts');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(express.json());
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    if (req.method === "OPTIONS") return res.sendStatus(200);
-    next();
-});
-
-let poolLocked = false;
-let poolLockedReason = '';
-
-function pad(n) { return String(n).padStart(2, '0'); }
-
-// Auto-free accounts after 24h
-setInterval(async () => {
-    const accounts = await getAccounts();
-    const now = Date.now();
-    for (const acc of accounts) {
-        if (acc.status === 'IN-USE' && acc.logoutTime && (now - acc.logoutTime >= TWENTY_FOUR_HOURS_MS)) {
-            await updateAccount(acc.phone, { status: 'FREE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: null });
-        }
-    }
-}, 60 * 1000);
-
-// 5-hour in-use timeout — if an account has been IN-USE for more than 5
-// hours without a real logout, move it to Waiting 24h automatically.
-// This replaces the old heartbeat-timeout logic: the only two ways an
-// account now leaves IN-USE are a real /logout call, or 5 hours elapsing.
-setInterval(async () => {
-    const accounts = await getAccounts();
-    const now = Date.now();
-    for (const acc of accounts) {
-        if (acc.status === 'IN-USE' && !acc.logoutTime && acc.inUseSince) {
-            if (now - acc.inUseSince > IN_USE_TIMEOUT_MS) {
-                const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                console.log(`Account ${acc.phone} has been IN-USE for 5h. Moving to waiting.`);
-                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (5h timeout)' });
-            }
-        }
-    }
-}, 60 * 1000);
-
-// Two independent lock conditions — both can lock the pool:
-// 1. TIME LOCK: 18:00 to 07:30 — pool always locked during these hours
-// 2. LOW ACCOUNT LOCK: only from 14:30 onwards — if free < 50, lock
-//    Before 14:30, free account count doesn't matter.
-function getZambiaTime() {
-    const zambiaStr = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lusaka' });
-    const timePart = zambiaStr.split(', ')[1];
-    const [h, m] = timePart.split(':').map(Number);
-    return { hour: h, minute: m };
-}
-
-setInterval(async () => {
-    const { hour, minute } = getZambiaTime();
-    const accounts = await getAccounts();
-    const freeCount = accounts.filter(a => a.status === 'FREE').length;
-
-    // Time lock: 18:00 to 07:30
-    const isTimeLocked = hour >= 18 || hour < 7 || (hour === 7 && minute < 30);
-
-    // Low account lock: only from 14:30 onwards
-    const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
-    const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
-
-    if (isTimeLocked || isLowAccounts) {
-        if (!poolLocked) {
-            poolLocked = true;
-            poolLockedReason = isTimeLocked
-                ? 'Locked at 18:00. Unlocks at 07:30.'
-                : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
-            console.log(poolLockedReason);
-        }
-    } else {
-        if (poolLocked) {
-            poolLocked = false;
-            poolLockedReason = '';
-            console.log('Pool unlocked.');
-        }
-    }
-}, 10 * 1000);
-
-app.get('/stats', async (req, res) => {
-    const accounts = await getAccounts();
-    const badPasswordAccounts = await getBadPasswordAccounts();
-    res.json({
-        free: accounts.filter(a => a.status === 'FREE').length,
-        inUse: accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime).length,
-        waiting: accounts.filter(a => a.status === 'IN-USE' && a.logoutTime).length,
-        badPassword: badPasswordAccounts.length,
-        locked: poolLocked,
-        reason: poolLockedReason
-    });
-});
-
-app.get('/inuse-stats', async (req, res) => {
-    const accounts = await getAccounts();
-    const list = accounts
-        .filter(a => a.status === 'IN-USE' && !a.logoutTime)
-        .map(a => ({ phone: a.phone, lastHeartbeat: a.lastHeartbeat }));
-    res.json(list);
-});
-
-app.post('/heartbeat', async (req, res) => {
-    const { phone } = req.body;
-    const accounts = await getAccounts();
-    const account = accounts.find(a => a.phone === phone);
-    if (account && account.status === 'IN-USE') {
-        await updateAccount(phone, { lastHeartbeat: Date.now() });
-        return res.json({ success: true });
-    }
-    res.json({ success: false, error: 'Account not found or not in use.' });
-});
-
-function waitingPage(rows) {
-    const rowsHtml = rows.length
-        ? rows.map((r, i) => `
-            <div class="row" data-phone="${r.phone}">
-                <div class="row-num">${i + 1}.</div>
-                <div class="row-info">
-                    <div class="row-phone">${r.phone}</div>
-                    <div class="row-countdown" id="cd-${i}">calculating...</div>
-                    ${r.logoutTimeStr ? `<div class="row-note">${r.logoutTimeStr}</div>` : ''}
-                </div>
-            </div>`).join('')
-        : `<div class="empty">No accounts</div>`;
-    const freeAtData = JSON.stringify(rows.map((r, i) => ({ id: i, freeAt: r.freeAt })));
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <title>Waiting 24h</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
-        .page{background:#0d1117;border-radius:16px;width:100%;max-width:520px;margin:0 auto;overflow:hidden}
-        .page-header{padding:16px 20px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:12px}
-        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;text-decoration:none;white-space:nowrap}
-        .page-title{font-size:15px;font-weight:500;color:#e6edf3}
-        .page-subtitle{font-size:11px;color:#4b5563;margin-top:2px}
-        .search-wrap{padding:14px 20px;border-bottom:1px solid #21262d}
-        .search-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
-        .search-input::placeholder{color:#4b5563}
-        .row{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid #161b22;gap:10px}
-        .row:last-child{border-bottom:none}
-        .row-num{font-size:12px;color:#4b5563;width:26px;flex-shrink:0}
-        .row-info{flex:1;min-width:0}
-        .row-phone{font-size:14px;color:#e6edf3;font-weight:500}
-        .row-countdown{font-size:11px;color:#fbbf24;margin-top:3px}
-        .row-note{font-size:10px;color:#4b5563;margin-top:2px}
-        .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
-        .hidden{display:none}
-    </style>
-</head>
-<body>
-<div class="page">
-    <div class="page-header">
-        <a href="/" class="back-btn">&#8592; Back</a>
-        <div>
-            <div class="page-title">Waiting 24h</div>
-            <div class="page-subtitle">${rows.length} full accounts</div>
-        </div>
-    </div>
-    <div class="search-wrap">
-        <input class="search-input" id="search" placeholder="&#128269; Search phone number..." oninput="filterRows(this.value)">
-    </div>
-    <div id="list">${rowsHtml}</div>
-</div>
-<script>
-    function pad(n){return String(n).padStart(2,'0')}
-    const data=${freeAtData};
-    function updateCountdowns(){
-        const now=Date.now();
-        data.forEach(item=>{
-            const el=document.getElementById('cd-'+item.id);
-            if(!el) return;
-            const diff=item.freeAt-now;
-            if(diff<=0){el.textContent='Ready to free';el.style.color='#3fb950';}
-            else{
-                const h=Math.floor(diff/3600000);
-                const m=Math.floor((diff%3600000)/60000);
-                const s=Math.floor((diff%60000)/1000);
-                el.textContent='Free in: '+h+'h '+pad(m)+'m '+pad(s)+'s';
-            }
-        });
-    }
-    function filterRows(q){
-        document.querySelectorAll('.row').forEach(row=>{
-            const phone=row.getAttribute('data-phone')||'';
-            row.classList.toggle('hidden',q!==''&&!phone.includes(q));
-        });
-    }
-    setInterval(updateCountdowns,1);updateCountdowns();
-</script>
-</body>
-</html>`;
-}
-
-function listPage(title, subtitle, rows, type) {
-    const rowsHtml = rows.length
-        ? rows.map((r, i) => `
-            <div class="row" data-phone="${r.phone}">
-                <div class="row-num">${i + 1}.</div>
-                <div class="row-info">
-                    <div class="row-phone">${r.display || r.phone}</div>
-                    ${r.password ? `<div class="row-pass">${r.password}</div>` : ''}
-                    ${r.reportedAt ? `<div class="row-time">&#9888; Reported at ${r.reportedAt}</div>` : ''}
-                </div>
-                ${type === 'free' || type === 'bad' ? `<button class="rm-btn" onclick="removeAccount('${r.phone}')">Remove</button>` : ''}
-            </div>`).join('')
-        : `<div class="empty">No accounts</div>`;
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <title>${title}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
-        .page{background:#0d1117;border-radius:16px;width:100%;max-width:520px;margin:0 auto;overflow:hidden}
-        .page-header{padding:16px 20px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:12px}
-        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;text-decoration:none;white-space:nowrap}
-        .page-title{font-size:15px;font-weight:500;color:#e6edf3}
-        .page-subtitle{font-size:11px;color:#4b5563;margin-top:2px}
-        .search-wrap{padding:14px 20px;border-bottom:1px solid #21262d}
-        .search-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
-        .search-input::placeholder{color:#4b5563}
-        .row{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid #161b22;gap:10px}
-        .row:last-child{border-bottom:none}
-        .row-num{font-size:12px;color:#4b5563;width:26px;flex-shrink:0}
-        .row-info{flex:1;min-width:0}
-        .row-phone{font-size:14px;color:#e6edf3;font-weight:500}
-        .row-pass{font-size:11px;color:#4b5563;margin-top:2px}
-        .row-time{font-size:11px;color:#f87171;margin-top:2px}
-        .rm-btn{background:#2d0a0a;border:1px solid #7f1d1d;color:#f87171;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0}
-        .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
-        .hidden{display:none}
-        .pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
-        .pin-box{background:#0d1117;border:1.5px solid #21262d;border-radius:16px;padding:28px 24px;width:100%;max-width:320px;text-align:center}
-        .pin-title{font-size:15px;font-weight:500;color:#e6edf3;margin-bottom:6px}
-        .pin-sub{font-size:12px;color:#4b5563;margin-bottom:20px}
-        .pin-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:12px;border-radius:8px;font-size:16px;outline:none;text-align:center;letter-spacing:4px;margin-bottom:14px}
-        .pin-row{display:flex;gap:10px}
-        .pin-cancel{flex:1;background:#161b22;border:1px solid #30363d;color:#8b949e;padding:10px;border-radius:8px;font-size:13px;cursor:pointer}
-        .pin-confirm{flex:1;background:#7f1d1d;border:none;color:#f87171;padding:10px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
-        .pin-err{color:#f87171;font-size:12px;margin-top:10px;display:none}
-    </style>
-</head>
-<body>
-<div class="page">
-    <div class="page-header">
-        <a href="/" class="back-btn">&#8592; Back</a>
-        <div><div class="page-title">${title}</div><div class="page-subtitle">${subtitle}</div></div>
-    </div>
-    <div class="search-wrap">
-        <input class="search-input" id="search" placeholder="&#128269; Search phone number..." oninput="filterRows(this.value)">
-    </div>
-    <div id="list">${rowsHtml}</div>
-</div>
-<div class="pin-overlay" id="pin-modal" style="display:none;">
-    <div class="pin-box">
-        <div class="pin-title">&#128274; Confirm removal</div>
-        <div class="pin-sub">Enter password to remove this account</div>
-        <input class="pin-input" id="pin-input" type="password" maxlength="10" placeholder="••••">
-        <div class="pin-row">
-            <button class="pin-cancel" onclick="closePin()">Cancel</button>
-            <button class="pin-confirm" onclick="confirmRemove()">Remove</button>
-        </div>
-        <div class="pin-err" id="pin-err">Incorrect password</div>
-    </div>
-</div>
-<script>
-    let pendingPhone=null;
-    const listType='${type}';
-    function removeAccount(phone){pendingPhone=phone;document.getElementById('pin-input').value='';document.getElementById('pin-err').style.display='none';document.getElementById('pin-modal').style.display='flex';setTimeout(()=>document.getElementById('pin-input').focus(),100);}
-    function closePin(){pendingPhone=null;document.getElementById('pin-modal').style.display='none';}
-    function confirmRemove(){
-        const pin=document.getElementById('pin-input').value.trim();
-        if(pin!=='1234'){document.getElementById('pin-err').style.display='block';document.getElementById('pin-input').value='';return;}
-        const endpoint=listType==='bad'?'/remove-bad-password':'/remove-account';
-        fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:pendingPhone,pin})})
-        .then(r=>r.json()).then(d=>{
-            if(d.success){closePin();const row=document.querySelector('[data-phone="'+pendingPhone+'"]');if(row)row.remove();}
-            else{document.getElementById('pin-err').textContent=d.error||'Error';document.getElementById('pin-err').style.display='block';}
-        });
-    }
-    document.getElementById('pin-input').addEventListener('keydown',e=>{if(e.key==='Enter')confirmRemove();if(e.key==='Escape')closePin();});
-    function filterRows(q){document.querySelectorAll('.row').forEach(row=>{const phone=row.getAttribute('data-phone')||'';row.classList.toggle('hidden',q!==''&&!phone.includes(q));});}
-</script>
-</body>
-</html>`;
-}
-
-app.get('/', async (req, res) => {
-    const accounts = await getAccounts();
-    const freeAccounts = accounts.filter(a => a.status === 'FREE');
-    const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
-    const waitingAccounts = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime);
-    const badPasswordAccounts = await getBadPasswordAccounts();
-    res.send(`<!DOCTYPE html>
-<html>
-<head>
-    <title>Login Pool Manager</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:sans-serif;background:#04060a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-        .db{background:#080b10;border-radius:20px;padding:30px;width:100%;max-width:760px}
-        .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
-        .db-title{font-size:20px;font-weight:500;color:#fff}
-        .live-pill{background:#0d4429;color:#3fb950;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:500;display:flex;align-items:center;gap:6px}
-        .locked-pill{background:#4b1111;color:#f87171;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:500;display:flex;align-items:center;gap:6px}
-        .live-dot{width:7px;height:7px;background:#3fb950;border-radius:50%;animation:blink 1.2s infinite}
-        .lock-dot{width:7px;height:7px;background:#f87171;border-radius:50%;animation:blink 0.8s infinite}
-        @keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
-        .four-boxes{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:20px}
-        .box{border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0}
-        .box-free{background:#0a1a0f;border:1.5px solid #1a4a27}
-        .box-inuse{background:#080f1f;border:1.5px solid #1a2f55}
-        .box-waiting{background:#120c22;border:1.5px solid #2e1f55}
-        .box-bad{background:#1a0f0a;border:1.5px solid #4a1f0a}
-        .box-label{font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
-        .free-col{color:#3fb950}.inuse-col{color:#58a6ff}.waiting-col{color:#c4b5fd}.bad-col{color:#fb923c}
-        .box-num{font-size:56px;font-weight:500;line-height:1;letter-spacing:-3px;margin-bottom:8px}
-        .num-free{color:#3fb950}.num-inuse{color:#58a6ff}.num-waiting{color:#c4b5fd}.num-bad{color:#fb923c}
-        .box-desc{font-size:11px;margin-bottom:16px;flex:1;line-height:1.4}
-        .desc-free{color:#2a6e3a}.desc-inuse{color:#1e4a7a}.desc-waiting{color:#4a3080}.desc-bad{color:#7a3a10}
-        .unlock-timer{font-size:15px;font-weight:500;color:#fff;margin-bottom:3px}
-        .unlock-sub{font-size:10px;color:#4b1111;margin-bottom:12px}
-        .view-btn{width:100%;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:none;background:#92400e;color:#fed7aa;text-decoration:none}
-        .view-count{background:#fed7aa;color:#92400e;border-radius:20px;padding:1px 8px;font-size:11px;font-weight:700}
-        .divider{height:1px;background:#1a1f2a;margin-bottom:20px}
-        .add-box{background:#0d1117;border:1.5px solid #21262d;border-radius:14px;padding:20px 24px;margin-bottom:20px}
-        .add-title{font-size:13px;font-weight:500;color:#8b949e;margin-bottom:14px;letter-spacing:0.5px;text-transform:uppercase}
-        .add-row{display:flex;gap:10px;flex-wrap:wrap}
-        .add-input{flex:1;min-width:120px;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
-        .add-input::placeholder{color:#4b5563}
-        .add-btn{background:#1a3a6e;border:none;color:#a8d0ff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .reset-btn{width:100%;background:#130a0a;border:1.5px solid #3d1515;color:#f85149;padding:13px;border-radius:12px;font-size:13px;font-weight:500;cursor:pointer}
-        .footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
-        .tick{font-size:11px;color:#3fb950;font-family:monospace;opacity:0.7}
-        .hint{font-size:10px;color:#252b35}
-        .msg{font-size:12px;margin-top:10px;padding:8px 12px;border-radius:6px;display:none}
-        .msg-ok{background:#0d4429;color:#3fb950}.msg-err{background:#4b1111;color:#f87171}
-        @media(max-width:600px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:44px}}
-    </style>
-</head>
-<body>
-<div class="db">
-    <div class="top-bar">
-        <div class="db-title">&#128274; Login pool manager</div>
-        <div id="pill" class="${poolLocked?'locked-pill':'live-pill'}">
-            <div class="${poolLocked?'lock-dot':'live-dot'}"></div>
-            ${poolLocked?'Locked':'Live'}
-        </div>
-    </div>
-    <div class="four-boxes">
-        <div class="box box-free" id="free-box">
-            <div class="box-label free-col" id="free-label">&#10003; Free</div>
-            <div class="box-num num-free" id="num-free">${freeAccounts.length}</div>
-            <div class="box-desc desc-free" id="free-desc">Accounts ready</div>
-            <div id="unlock-block" style="display:none;">
-                <div class="unlock-timer" id="unlock-countdown">--:--:--</div>
-                <div class="unlock-sub">Unlocks at 07:30</div>
-            </div>
-            <a href="/view/free" class="view-btn">View <span class="view-count" id="cnt-free">${freeAccounts.length}</span></a>
-        </div>
-        <div class="box box-inuse">
-            <div class="box-label inuse-col">&#9654; In use</div>
-            <div class="box-num num-inuse" id="num-inuse">${inUseAccounts.length}</div>
-            <div class="box-desc desc-inuse">Not yet logged out</div>
-            <a href="/view/inuse" class="view-btn">View <span class="view-count" id="cnt-inuse">${inUseAccounts.length}</span></a>
-        </div>
-        <div class="box box-waiting">
-            <div class="box-label waiting-col">&#9203; Waiting 24h</div>
-            <div class="box-num num-waiting" id="num-waiting">${waitingAccounts.length}</div>
-            <div class="box-desc desc-waiting">Full account</div>
-            <a href="/view/waiting" class="view-btn">View <span class="view-count" id="cnt-waiting">${waitingAccounts.length}</span></a>
-        </div>
-        <div class="box box-bad">
-            <div class="box-label bad-col">&#10060; Bad password</div>
-            <div class="box-num num-bad" id="num-bad">${badPasswordAccounts.length}</div>
-            <div class="box-desc desc-bad">Login failed</div>
-            <a href="/view/bad" class="view-btn">View <span class="view-count" id="cnt-bad">${badPasswordAccounts.length}</span></a>
-        </div>
-    </div>
-    <div class="add-box">
-        <div class="add-title">&#43; Add account</div>
-        <div class="add-row">
-            <input class="add-input" id="inp-phone" placeholder="Phone number" type="text">
-            <input class="add-input" id="inp-pass" placeholder="Password" type="text">
-            <button class="add-btn" onclick="addAccount()">Add</button>
-        </div>
-        <div class="msg" id="add-msg"></div>
-    </div>
-    <div class="footer">
-        <span class="tick" id="tick">--:--:--</span>
-        <span class="hint">Live data · Postgres</span>
-    </div>
-</div>
-<script>
-    function pad(n){return String(n).padStart(2,'0')}
-    function update(){
-        const now=new Date();
-        document.getElementById('tick').textContent=pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
-        const cd=document.getElementById('unlock-countdown');
-        if(cd&&document.getElementById('unlock-block').style.display!=='none'){
-            const unlock=new Date();unlock.setHours(7,30,0,0);
-            if(unlock<=now)unlock.setDate(unlock.getDate()+1);
-            const diff=unlock-now;
-            cd.textContent=Math.floor(diff/3600000)+'h '+pad(Math.floor((diff%3600000)/60000))+'m '+pad(Math.floor((diff%60000)/1000))+'s';
-        }
-    }
-    function refreshStats(){
-        fetch('/stats').then(r=>r.json()).then(d=>{
-            document.getElementById('num-free').textContent=d.free;
-            document.getElementById('num-inuse').textContent=d.inUse;
-            document.getElementById('num-waiting').textContent=d.waiting;
-            document.getElementById('num-bad').textContent=d.badPassword;
-            document.getElementById('cnt-free').textContent=d.free;
-            document.getElementById('cnt-inuse').textContent=d.inUse;
-            document.getElementById('cnt-waiting').textContent=d.waiting;
-            document.getElementById('cnt-bad').textContent=d.badPassword;
-            const pill=document.getElementById('pill');
-            pill.className=d.locked?'locked-pill':'live-pill';
-            pill.innerHTML=d.locked?'<div class="lock-dot"></div> Locked':'<div class="live-dot"></div> Live';
-            const freeBox=document.getElementById('free-box');
-            const freeLabel=document.getElementById('free-label');
-            const freeNum=document.getElementById('num-free');
-            const freeDesc=document.getElementById('free-desc');
-            const unlockBlock=document.getElementById('unlock-block');
-            if(d.locked){
-                freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
-                freeLabel.style.color='#f87171';freeLabel.innerHTML='&#128274; Free — Locked';
-                freeNum.style.color='#f87171';freeDesc.style.color='#7f2020';freeDesc.textContent=d.reason;
-                unlockBlock.style.display='block';
-            } else {
-                freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
-                freeLabel.style.color='#3fb950';freeLabel.innerHTML='&#10003; Free';
-                freeNum.style.color='#3fb950';freeDesc.style.color='#2a6e3a';freeDesc.textContent='Accounts ready';
-                unlockBlock.style.display='none';
-            }
-        }).catch(()=>{});
-    }
-    function showMsg(text,ok){const el=document.getElementById('add-msg');el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
-    function addAccount(){
-        const phone=document.getElementById('inp-phone').value.trim();
-        const password=document.getElementById('inp-pass').value.trim();
-        if(!phone||!password){showMsg('Phone and password required',false);return;}
-        fetch('/add-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})})
-        .then(r=>r.json()).then(d=>{
-            if(d.success){showMsg('Account '+phone+' added!',true);document.getElementById('inp-phone').value='';document.getElementById('inp-pass').value='';refreshStats();}
-            else{showMsg(d.error,false);}
-        });
-    }
-    setInterval(update,1);setInterval(refreshStats,1000);update();refreshStats();
-</script>
-</body>
-</html>`);
-});
-
-app.get('/view/free', async (req, res) => {
-    const accounts = await getAccounts();
-    const list = accounts.filter(a => a.status === 'FREE');
-    res.send(listPage('Free Accounts', list.length + ' accounts ready', list, 'free'));
-});
-
-app.get('/view/inuse', async (req, res) => {
-    const accounts = await getAccounts();
-    const list = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
-    const rowsHtml = list.length
-        ? list.map((r, i) => `
-            <div class="row" data-phone="${r.phone}">
-                <div class="row-num">${i + 1}.</div>
-                <div class="row-info">
-                    <div class="row-phone">${r.phone}</div>
-                    <div class="row-hb" id="hb-${i}">&#9679; checking...</div>
-                </div>
-            </div>`).join('')
-        : `<div class="empty">No accounts</div>`;
-    res.send(`<!DOCTYPE html>
-<html>
-<head>
-    <title>In Use</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:sans-serif;background:#04060a;min-height:100vh;padding:20px}
-        .page{background:#0d1117;border-radius:16px;width:100%;max-width:520px;margin:0 auto;overflow:hidden}
-        .page-header{padding:16px 20px;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:12px}
-        .back-btn{background:#161b22;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:8px;font-size:12px;text-decoration:none;white-space:nowrap}
-        .page-title{font-size:15px;font-weight:500;color:#e6edf3}
-        .page-subtitle{font-size:11px;color:#4b5563;margin-top:2px}
-        .search-wrap{padding:14px 20px;border-bottom:1px solid #21262d}
-        .search-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
-        .search-input::placeholder{color:#4b5563}
-        .row{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid #161b22;gap:10px}
-        .row:last-child{border-bottom:none}
-        .row-num{font-size:12px;color:#4b5563;width:26px;flex-shrink:0}
-        .row-info{flex:1;min-width:0}
-        .row-phone{font-size:14px;color:#e6edf3;font-weight:500}
-        .row-hb{font-size:11px;margin-top:3px}
-        .hb-alive{color:#3fb950}.hb-warning{color:#fbbf24}.hb-dead{color:#f87171}
-        .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
-        .hidden{display:none}
-    </style>
-</head>
-<body>
-<div class="page">
-    <div class="page-header">
-        <a href="/" class="back-btn">&#8592; Back</a>
-        <div><div class="page-title">In Use</div><div class="page-subtitle">${list.length} not yet logged out</div></div>
-    </div>
-    <div class="search-wrap">
-        <input class="search-input" id="search" placeholder="&#128269; Search phone number..." oninput="filterRows(this.value)">
-    </div>
-    <div id="list">${rowsHtml}</div>
-</div>
-<script>
-    function updateHeartbeats(){
-        fetch('/inuse-stats').then(r=>r.json()).then(data=>{
-            data.forEach((acc,i)=>{
-                const el=document.getElementById('hb-'+i);
-                if(!el) return;
-                if(!acc.lastHeartbeat){el.className='row-hb hb-warning';el.textContent='⚡ Waiting for first heartbeat...';return;}
-                const elapsed=Date.now()-acc.lastHeartbeat;
-                const s=Math.floor(elapsed/1000);
-                if(elapsed<5000){el.className='row-hb hb-alive';el.textContent='● Heartbeat OK — '+s+'s ago';}
-                else if(elapsed<30000){el.className='row-hb hb-warning';el.textContent='◐ Heartbeat slow — '+s+'s ago';}
-                else{el.className='row-hb hb-dead';el.textContent='✕ No heartbeat — '+s+'s ago';}
-            });
-        }).catch(()=>{});
-    }
-    function filterRows(q){document.querySelectorAll('.row').forEach(row=>{const phone=row.getAttribute('data-phone')||'';row.classList.toggle('hidden',q!==''&&!phone.includes(q));});}
-    setInterval(updateHeartbeats,1000);updateHeartbeats();
-</script>
-</body>
-</html>`);
-});
-
-app.get('/view/waiting', async (req, res) => {
-    const accounts = await getAccounts();
-    const list = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime)
-        .map(a => ({ phone: a.phone, freeAt: a.logoutTime + TWENTY_FOUR_HOURS_MS, logoutTimeStr: a.logoutTimeStr }));
-    res.send(waitingPage(list));
-});
-
-app.get('/view/bad', async (req, res) => {
-    const badPasswordAccounts = await getBadPasswordAccounts();
-    res.send(listPage('Bad Password', badPasswordAccounts.length + ' accounts with wrong password', badPasswordAccounts, 'bad'));
-});
-
-app.post('/wrong-password', async (req, res) => {
-    const { phone } = req.body;
-    if (!phone) return res.json({ success: false, error: 'Phone required.' });
-    const now = new Date();
-    const timeStr = pad(now.getHours()) + ':' + pad(now.getMinutes());
-    const accounts = await getAccounts();
-    const acc = accounts.find(a => a.phone === phone) || { phone, password: 'unknown' };
-    await removeAccount(phone);
-    await addBadPasswordAccount(acc.phone, acc.password, timeStr);
-    res.json({ success: true });
-});
-
-app.post('/add-account', async (req, res) => {
-    const { phone, password } = req.body;
-    if (!phone || !password) return res.json({ success: false, error: 'Phone and password required.' });
-    const accounts = await getAccounts();
-    if (accounts.find(a => a.phone === phone)) return res.json({ success: false, error: 'Account already exists.' });
-    await addAccount(phone, password);
-    res.json({ success: true });
-});
-
-app.post('/remove-account', async (req, res) => {
-    const { phone, pin } = req.body;
-    if (pin !== REMOVE_PASSWORD) return res.json({ success: false, error: 'Incorrect password.' });
-    await removeAccount(phone);
-    res.json({ success: true });
-});
-
-app.post('/remove-bad-password', async (req, res) => {
-    const { phone, pin } = req.body;
-    if (pin !== REMOVE_PASSWORD) return res.json({ success: false, error: 'Incorrect password.' });
-    await removeBadPasswordAccount(phone);
-    res.json({ success: true });
-});
-
-app.post('/request-login', async (req, res) => {
-    if (poolLocked) return res.json({ success: false, error: `Pool locked. ${poolLockedReason}` });
-    const { tabId } = req.body;
-    try {
-        // If this tab already has an IN-USE account, move it to Waiting 24h
-        // before assigning a new one. This handles tab reloads gracefully —
-        // the old account starts its 24h cooldown immediately instead of
-        // sitting as a ghost IN-USE entry.
-        if (tabId) {
-            const existing = await getAccountByTabId(tabId);
-            if (existing) {
-                const { hour, minute } = getZambiaTime();
-                const timeStr = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
-                console.log(`Tab ${tabId} already held ${existing.phone}. Moving to Waiting.`);
-                await updateAccount(existing.phone, {
-                    logoutTime: Date.now(),
-                    logoutTimeStr: timeStr + ' (re-login)',
-                    lastHeartbeat: null,
-                    inUseSince: null,
-                    tabId: null,
-                });
-            }
-        }
-        const claimed = await claimFreeAccount(Date.now(), tabId);
-        if (claimed) {
-            return res.json({ success: true, phone: claimed.phone, password: claimed.password });
-        }
-        return res.json({ success: false, error: 'No free accounts available' });
-    } catch (e) {
-        console.error('request-login error:', e);
-        return res.json({ success: false, error: 'Server error, please retry.' });
-    }
-});
-
-app.post('/login', async (req, res) => {
-    const { phone } = req.body;
-    const accounts = await getAccounts();
-    const account = accounts.find(a => a.phone === phone);
-    if (account && account.status === 'FREE') {
-        await updateAccount(phone, { status: 'IN-USE', logoutTime: null, logoutTimeStr: null, lastHeartbeat: Date.now() });
-        return res.json({ success: true, message: `Account ${phone} marked as logged in.` });
-    }
-    return res.json({ success: false, error: 'Account not available or already in use.' });
-});
-
-app.post('/logout', async (req, res) => {
-    const { phone, logoutTime } = req.body;
-    const accounts = await getAccounts();
-    const account = accounts.find(a => a.phone === phone);
-    if (account) {
-        await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null, inUseSince: null, tabId: null });
-        return res.json({ success: true, message: `Account ${phone} logged out. Will free after 24h.` });
-    }
-    return res.json({ success: false, error: 'Account not found.' });
-});
-
-app.post('/aviator-lock', async (req, res) => {
-    const { phone } = req.body;
-    const accounts = await getAccounts();
-    const account = accounts.find(a => a.phone === phone);
-    if (account) {
-        await updateAccount(phone, { status: 'LOCKED' });
-        return res.json({ success: true });
-    }
-    return res.json({ success: false, error: 'Account not found.' });
-});
-
-app.post('/reset', async (req, res) => {
-    await resetAllAccounts();
-    poolLocked = false; poolLockedReason = '';
-    res.json({ success: true });
-});
-
-// Start server after DB is ready
-initDB().then(async () => {
-    // Check lock state immediately on startup
-    const { hour, minute } = getZambiaTime();
-    const accounts = await getAccounts();
-    const freeCount = accounts.filter(a => a.status === 'FREE').length;
-    const isTimeLocked = hour >= 18 || hour < 7 || (hour === 7 && minute < 30);
-    const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
-    const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
-    if (isTimeLocked || isLowAccounts) {
-        poolLocked = true;
-        poolLockedReason = isTimeLocked
-            ? 'Locked at 18:00. Unlocks at 07:30.'
-            : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
-        console.log('Startup lock:', poolLockedReason);
-    }
-    app.listen(PORT, () => console.log(`Pool Manager active on port ${PORT} — connected to Postgres`));
-}).catch(err => {
-    console.error('Failed to initialize DB:', err);
-    process.exit(1);
-});
+};
