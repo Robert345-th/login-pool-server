@@ -49,7 +49,7 @@ setInterval(async () => {
     }
 }, 60 * 1000);
 
-const HEARTBEAT_SILENCE_TIMEOUT_MS = 10 * 60 * 60 * 1000; // 10 hours of no heartbeat
+const HEARTBEAT_SILENCE_TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3 hours of no heartbeat → move to Waiting
 
 // Two timeout checks run together every 60 seconds:
 // 1. 5-hour in-use timeout — account has been IN-USE for 5h straight
@@ -72,8 +72,8 @@ setInterval(async () => {
 
             // Check 2: 10-hour heartbeat silence timeout
             if (acc.lastHeartbeat && now - acc.lastHeartbeat > HEARTBEAT_SILENCE_TIMEOUT_MS) {
-                console.log(`Account ${acc.phone} has had no heartbeat for 10h. Moving to waiting.`);
-                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (10h no heartbeat)', inUseSince: null, tabId: null });
+                console.log(`Account ${acc.phone} has had no heartbeat for 3h. Moving to waiting.`);
+                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (3h no heartbeat)', inUseSince: null, tabId: null });
                 continue;
             }
         }
@@ -587,9 +587,11 @@ app.get('/view/inuse', async (req, res) => {
                 if(!acc.lastHeartbeat){el.className='row-hb hb-warning';el.textContent='⚡ Waiting for first heartbeat...'+(acc.tabId?' — '+acc.tabId:'');return;}
                 const elapsed=Date.now()-acc.lastHeartbeat;
                 const s=Math.floor(elapsed/1000);
-                if(elapsed<5000){el.className='row-hb hb-alive';el.textContent='● Heartbeat OK — '+s+'s ago'+(acc.tabId?' — '+acc.tabId:'');}
-                else if(elapsed<30000){el.className='row-hb hb-warning';el.textContent='◐ Heartbeat slow — '+s+'s ago'+(acc.tabId?' — '+acc.tabId:'');}
-                else{el.className='row-hb hb-dead';el.textContent='✕ No heartbeat — '+s+'s ago'+(acc.tabId?' — '+acc.tabId:'');}
+                var tab=acc.tabId?' — '+acc.tabId:'';
+                if(elapsed<5000){el.className='row-hb hb-alive';el.textContent='● Heartbeat OK'+tab;}
+                else if(elapsed<60000){el.className='row-hb hb-warning';el.textContent='◐ '+s+' seconds no heartbeat'+tab;}
+                else if(elapsed<3600000){var mins=Math.floor(elapsed/60000);el.className='row-hb hb-warning';el.textContent='◐ '+mins+(mins===1?' minute':' minutes')+' no heartbeat'+tab;}
+                else{var hrs=Math.floor(elapsed/3600000);var remMins=Math.floor((elapsed%3600000)/60000);var hrStr=hrs+(hrs===1?' hour':' hours');var minStr=remMins>0?' '+remMins+(remMins===1?' minute':' minutes'):'';el.className='row-hb hb-dead';el.textContent='✕ '+hrStr+minStr+' no heartbeat'+tab;}
             });
         }).catch(()=>{});
     }
