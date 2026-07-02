@@ -110,6 +110,28 @@ setInterval(async () => {
                 ? 'Locked at 18:00. Unlocks at 07:30.'
                 : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
             console.log(poolLockedReason);
+
+            // 1 hour after lock time (19:00), move ALL IN USE accounts to Waiting 24h
+            // even if they never requested a new account
+            if (isTimeLocked) {
+                setTimeout(async () => {
+                    try {
+                        const latestAccounts = await getAccounts();
+                        const inUseAccounts = latestAccounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
+                        for (const acc of inUseAccounts) {
+                            const { hour: h, minute: m } = getZambiaTime();
+                            const timeStr = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+                            await updateAccount(acc.phone, {
+                                logoutTime: Date.now(),
+                                logoutTimeStr: timeStr + ' (19:00 auto)',
+                                inUseSince: null,
+                                tabId: null
+                            });
+                            console.log(`[LOCK 19:00] Moved ${acc.phone} to Waiting.`);
+                        }
+                    } catch(e) { console.error('19:00 auto-move error:', e); }
+                }, 60 * 60 * 1000); // 1 hour after lock
+            }
         }
     } else {
         if (poolLocked) {
@@ -651,7 +673,28 @@ app.post('/remove-bad-password', async (req, res) => {
 });
 
 app.post('/request-login', async (req, res) => {
-    if (poolLocked) return res.json({ success: false, error: `Pool locked. ${poolLockedReason}` });
+    if (poolLocked) {
+        // If this tab currently holds an account, move it to Waiting 24h
+        const { tabId } = req.body;
+        if (tabId) {
+            try {
+                const accounts = await getAccounts();
+                const heldAccount = accounts.find(a => a.tabId === tabId && a.status === 'IN-USE' && !a.logoutTime);
+                if (heldAccount) {
+                    const { hour, minute } = getZambiaTime();
+                    const timeStr = String(hour).padStart(2,'0') + ':' + String(minute).padStart(2,'0');
+                    await updateAccount(heldAccount.phone, {
+                        logoutTime: Date.now(),
+                        logoutTimeStr: timeStr + ' (pool locked)',
+                        inUseSince: null,
+                        tabId: null
+                    });
+                    console.log(`[LOCK] ${tabId} tried to request during lock — moved ${heldAccount.phone} to Waiting.`);
+                }
+            } catch(e) { console.error('lock-move error:', e); }
+        }
+        return res.json({ success: false, error: `Pool locked. ${poolLockedReason}` });
+    }
     const { tabId } = req.body;
     // Reject any request that doesn't include a tab ID — every tab must
     // identify itself so the server can track account ownership correctly.
