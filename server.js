@@ -49,7 +49,7 @@ setInterval(async () => {
     }
 }, 60 * 1000);
 
-const HEARTBEAT_SILENCE_TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3 hours of no heartbeat → move to Waiting
+const HEARTBEAT_SILENCE_TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3 hours since LAST heartbeat → move to Waiting
 
 // Two timeout checks run together every 60 seconds:
 // 1. 5-hour in-use timeout — account has been IN-USE for 5h straight
@@ -63,16 +63,12 @@ setInterval(async () => {
             const { hour, minute } = getZambiaTime();
             const timeStr = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
 
-            // Check 1: 5-hour in-use timeout
-            if (acc.inUseSince && now - acc.inUseSince > IN_USE_TIMEOUT_MS) {
-                console.log(`Account ${acc.phone} has been IN-USE for 5h. Moving to waiting.`);
-                await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (5h timeout)', inUseSince: null, tabId: null });
-                continue;
-            }
-
-            // Check 2: 10-hour heartbeat silence timeout
-            if (acc.lastHeartbeat && now - acc.lastHeartbeat > HEARTBEAT_SILENCE_TIMEOUT_MS) {
-                console.log(`Account ${acc.phone} has had no heartbeat for 3h. Moving to waiting.`);
+            // Check: 3-hour heartbeat silence timeout
+            // Only fires if at least one heartbeat was received AND
+            // the last heartbeat was more than 3 hours ago.
+            // If lastHeartbeat is null, the account never sent one — skip it.
+            if (acc.lastHeartbeat && acc.lastHeartbeat > acc.inUseSince && now - acc.lastHeartbeat > HEARTBEAT_SILENCE_TIMEOUT_MS) {
+                console.log(`Account ${acc.phone} last heartbeat was 3h+ ago. Moving to waiting.`);
                 await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (3h no heartbeat)', inUseSince: null, tabId: null });
                 continue;
             }
