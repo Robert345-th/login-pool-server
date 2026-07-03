@@ -78,7 +78,7 @@ setInterval(async () => {
 
 // Two independent lock conditions — both can lock the pool:
 // 1. TIME LOCK: 18:00 to 07:30 — pool always locked during these hours
-// 2. LOW ACCOUNT LOCK: only from 14:30 onwards — if free < 50, lock
+// 2. LOW ACCOUNT LOCK: only from 16:00 onwards — if free < 50, lock
 //    Before 14:30, free account count doesn't matter.
 function getZambiaTime() {
     const zambiaStr = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lusaka' });
@@ -95,7 +95,7 @@ setInterval(async () => {
     // Time lock: 18:00 to 07:30
     const isTimeLocked = hour >= 18 || hour < 7 || (hour === 7 && minute < 30);
 
-    // Low account lock: only from 14:30 onwards
+    // Low account lock: only from 16:00 onwards
     const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
     const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
 
@@ -104,7 +104,7 @@ setInterval(async () => {
             poolLocked = true;
             poolLockedReason = isTimeLocked
                 ? 'Locked at 18:00. Unlocks at 07:30.'
-                : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
+                : `Free accounts dropped to ${freeCount}. Locked from 16:00.`;
             console.log(poolLockedReason);
 
             // 1 hour after lock time (19:00), move ALL IN USE accounts to Waiting 24h
@@ -763,7 +763,7 @@ initDB().then(async () => {
         poolLocked = true;
         poolLockedReason = isTimeLocked
             ? 'Locked at 18:00. Unlocks at 07:30.'
-            : `Free accounts dropped to ${freeCount}. Locked from 14:30.`;
+            : `Free accounts dropped to ${freeCount}. Locked from 16:00.`;
         console.log('Startup lock:', poolLockedReason);
     }
     app.listen(PORT, () => console.log(`Pool Manager active on port ${PORT} — connected to Postgres`));
