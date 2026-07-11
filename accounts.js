@@ -13,6 +13,7 @@ const LOW_ACCOUNT_LOCK_MINUTE = 0;
 const REMOVE_PASSWORD = '1234';
 const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000; // kept for heartbeat display only
 const IN_USE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours — max time IN-USE before auto-move to Waiting
+const PICKED_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — if a picked withdraw number hasn't logged out, finalize it anyway
 
 async function initDB() {
     await pool.query(`
@@ -39,6 +40,21 @@ async function initDB() {
             status TEXT DEFAULT 'BAD_PASSWORD'
         );
     `);
+    // Completely separate table for the Available/Withdrawn feature.
+    // Deliberately NOT the accounts table, so this can never collide
+    // with or overwrite login-pool account statuses.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS withdraw_pool (
+            phone TEXT PRIMARY KEY,
+            password TEXT DEFAULT NULL,
+            status TEXT DEFAULT 'AVAILABLE',
+            added_at BIGINT DEFAULT NULL,
+            picked_at BIGINT DEFAULT NULL,
+            withdrawn_at BIGINT DEFAULT NULL
+        );
+    `);
+    await pool.query(`ALTER TABLE withdraw_pool ADD COLUMN IF NOT EXISTS password TEXT DEFAULT NULL;`);
+    await pool.query(`ALTER TABLE withdraw_pool ADD COLUMN IF NOT EXISTS picked_at BIGINT DEFAULT NULL;`);
 
     const { rowCount } = await pool.query('SELECT 1 FROM accounts LIMIT 1');
     if (rowCount === 0) {
@@ -401,6 +417,9 @@ async function reLoginForTab(tabId, heartbeatNow, logoutTimeStr) {
         await client.query('BEGIN');
 
         // Step 1: find and release the old account held by this tab
+        // NOTE: this is an automatic system bump (tab requesting a new
+        // account), not a manual logout — deliberately does NOT touch
+        // withdraw_pool, per the same rule as updateAccount above.
         if (tabId) {
             const { rows: oldRows } = await client.query(
                 `SELECT phone FROM accounts WHERE tab_id = $1 AND status = 'IN-USE' AND logout_time IS NULL LIMIT 1 FOR UPDATE SKIP LOCKED`,
@@ -494,6 +513,10 @@ async function updateAccount(phone, fields) {
     const setClauses = keys.map((k, i) => `${map[k]} = $${i + 1}`).join(', ');
     const values = [...keys.map(k => fields[k]), phone];
     await pool.query(`UPDATE accounts SET ${setClauses} WHERE phone = $${values.length}`, values);
+    // NOTE: deliberately does NOT touch withdraw_pool here. Automatic/system
+    // logouts (19:00 lock, idle timeout, re-login bump) go through this
+    // function but must NOT move a picked number to Withdrawn — only an
+    // explicit, manual /logout call should do that. See the /logout route.
 }
 
 async function addAccount(phone, password) {
@@ -501,6 +524,66 @@ async function addAccount(phone, password) {
         `INSERT INTO accounts (phone, password, status) VALUES ($1, $2, 'FREE')`,
         [phone, password]
     );
+}
+
+// Adds a phone to BOTH the login pool (accounts, status FREE) and the
+// withdraw pool (withdraw_pool, status AVAILABLE) in a single transaction.
+// This is what the dashboard's "Add account" box now calls, so every
+// account you add is automatically ready to withdraw too.
+async function addAccountEverywhere(phone, password) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query(
+            `INSERT INTO accounts (phone, password, status) VALUES ($1, $2, 'FREE')`,
+            [phone, password]
+        );
+        await client.query(
+            `INSERT INTO withdraw_pool (phone, password, status, added_at) VALUES ($1, $2, 'AVAILABLE', $3) ON CONFLICT (phone) DO NOTHING`,
+            [phone, password, Date.now()]
+        );
+        await client.query('COMMIT');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
+// If this phone is currently 'PICKED' in withdraw_pool (i.e. some external
+// system claimed it but it hasn't logged out yet), mark it 'WITHDRAWN' now.
+// No-op if the phone isn't in withdraw_pool or isn't in 'PICKED' state —
+// safe to call on every account logout, regardless of cause.
+async function markWithdrawnIfPicked(phone) {
+    await pool.query(
+        `UPDATE withdraw_pool SET status = 'WITHDRAWN', withdrawn_at = $2 WHERE phone = $1 AND status = 'PICKED'`,
+        [phone, Date.now()]
+    );
+}
+
+// Safety net: any number stuck in 'PICKED' for more than PICKED_TIMEOUT_MS
+// (5 min) without its account logging out gets finalized to 'WITHDRAWN'
+// anyway. Prevents numbers from being invisibly stuck between Available
+// and Withdrawn forever.
+async function finalizeStalePickedNumbers() {
+    const cutoff = Date.now() - PICKED_TIMEOUT_MS;
+    const { rowCount } = await pool.query(
+        `UPDATE withdraw_pool SET status = 'WITHDRAWN', withdrawn_at = $1 WHERE status = 'PICKED' AND picked_at IS NOT NULL AND picked_at <= $2`,
+        [Date.now(), cutoff]
+    );
+    return { finalized: rowCount };
+}
+
+// Moves every currently-WITHDRAWN number back to AVAILABLE. Used when the
+// available pool runs dry, so the withdraw system recycles instead of
+// permanently running out.
+async function recycleWithdrawnToAvailable() {
+    const { rowCount } = await pool.query(
+        `UPDATE withdraw_pool SET status = 'AVAILABLE', added_at = $1, picked_at = NULL, withdrawn_at = NULL WHERE status = 'WITHDRAWN'`,
+        [Date.now()]
+    );
+    return { recycled: rowCount };
 }
 
 async function removeAccount(phone) {
@@ -527,6 +610,85 @@ async function removeBadPasswordAccount(phone) {
     await pool.query('DELETE FROM bad_password_accounts WHERE phone = $1', [phone]);
 }
 
+// ---- Withdraw pool: fully separate from `accounts`, cannot ever touch login accounts ----
+
+async function getWithdrawPool() {
+    const { rows } = await pool.query('SELECT * FROM withdraw_pool ORDER BY phone ASC');
+    return rows.map(r => ({
+        phone: r.phone,
+        password: r.password || null,
+        status: r.status,
+        addedAt: r.added_at ? Number(r.added_at) : null,
+        pickedAt: r.picked_at ? Number(r.picked_at) : null,
+        withdrawnAt: r.withdrawn_at ? Number(r.withdrawn_at) : null,
+    }));
+}
+
+// Bulk-insert plain phone numbers into withdraw_pool with status 'AVAILABLE'.
+// Duplicates (phone already in this table) are left untouched, not overwritten.
+async function bulkAddWithdrawNumbers(phones) {
+    if (!phones || phones.length === 0) return { inserted: 0 };
+    const now = Date.now();
+    const values = [];
+    const placeholders = [];
+    phones.forEach((phone, i) => {
+        placeholders.push(`($${i * 2 + 1}, 'AVAILABLE', $${i * 2 + 2})`);
+        values.push(phone, now);
+    });
+    const { rowCount } = await pool.query(
+        `INSERT INTO withdraw_pool (phone, status, added_at) VALUES ${placeholders.join(', ')} ON CONFLICT (phone) DO NOTHING`,
+        values
+    );
+    return { inserted: rowCount };
+}
+
+async function removeWithdrawNumber(phone) {
+    await pool.query('DELETE FROM withdraw_pool WHERE phone = $1', [phone]);
+}
+
+// Marks a number as PICKED — the only thing that changes is withdraw_pool.
+// Nothing in `accounts` (Free/In-Use/Waiting) is touched.
+async function pickWithdrawNumber(phone) {
+    const { rows } = await pool.query(
+        `UPDATE withdraw_pool SET status = 'PICKED', picked_at = $2 WHERE phone = $1 AND status = 'AVAILABLE' RETURNING phone`,
+        [phone, Date.now()]
+    );
+    return rows.length > 0;
+}
+
+// Same idea as claimFreeAccount, but for withdraw_pool: grabs the oldest
+// AVAILABLE number automatically (caller doesn't choose which one) and
+// marks it PICKED in one transaction. Only touches withdraw_pool.
+async function requestAvailableNumber() {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(`
+            SELECT phone, password FROM withdraw_pool
+            WHERE status = 'AVAILABLE'
+            ORDER BY added_at ASC NULLS LAST
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        `);
+        if (rows.length === 0) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+        const { phone, password } = rows[0];
+        await client.query(
+            `UPDATE withdraw_pool SET status = 'PICKED', picked_at = $2 WHERE phone = $1`,
+            [phone, Date.now()]
+        );
+        await client.query('COMMIT');
+        return { phone, password };
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     pool,
     initDB,
@@ -536,11 +698,20 @@ module.exports = {
     reLoginForTab,
     updateAccount,
     addAccount,
+    addAccountEverywhere,
     removeAccount,
     resetAllAccounts,
     getBadPasswordAccounts,
     addBadPasswordAccount,
     removeBadPasswordAccount,
+    getWithdrawPool,
+    bulkAddWithdrawNumbers,
+    removeWithdrawNumber,
+    pickWithdrawNumber,
+    requestAvailableNumber,
+    markWithdrawnIfPicked,
+    recycleWithdrawnToAvailable,
+    finalizeStalePickedNumbers,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
     LOW_ACCOUNT_LOCK_HOUR,
@@ -548,4 +719,5 @@ module.exports = {
     REMOVE_PASSWORD,
     HEARTBEAT_TIMEOUT_MS,
     IN_USE_TIMEOUT_MS,
+    PICKED_TIMEOUT_MS,
 };
