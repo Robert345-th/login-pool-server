@@ -417,7 +417,9 @@ async function reLoginForTab(tabId, heartbeatNow, logoutTimeStr) {
         await client.query('BEGIN');
 
         // Step 1: find and release the old account held by this tab
-        let releasedPhone = null;
+        // NOTE: this is an automatic system bump (tab requesting a new
+        // account), not a manual logout — deliberately does NOT touch
+        // withdraw_pool, per the same rule as updateAccount above.
         if (tabId) {
             const { rows: oldRows } = await client.query(
                 `SELECT phone FROM accounts WHERE tab_id = $1 AND status = 'IN-USE' AND logout_time IS NULL LIMIT 1 FOR UPDATE SKIP LOCKED`,
@@ -428,7 +430,6 @@ async function reLoginForTab(tabId, heartbeatNow, logoutTimeStr) {
                     `UPDATE accounts SET logout_time = $2, logout_time_str = $3, last_heartbeat = NULL, in_use_since = NULL, tab_id = NULL WHERE phone = $1`,
                     [oldRows[0].phone, heartbeatNow, logoutTimeStr + ' (re-login)']
                 );
-                releasedPhone = oldRows[0].phone;
             }
         }
 
@@ -447,9 +448,6 @@ async function reLoginForTab(tabId, heartbeatNow, logoutTimeStr) {
         );
 
         await client.query('COMMIT');
-        if (releasedPhone) {
-            await markWithdrawnIfPicked(releasedPhone);
-        }
         return { phone, password };
     } catch (e) {
         await client.query('ROLLBACK');
@@ -515,11 +513,10 @@ async function updateAccount(phone, fields) {
     const setClauses = keys.map((k, i) => `${map[k]} = $${i + 1}`).join(', ');
     const values = [...keys.map(k => fields[k]), phone];
     await pool.query(`UPDATE accounts SET ${setClauses} WHERE phone = $${values.length}`, values);
-    // Any path that sets logoutTime means this account just logged out —
-    // if it was picked from the withdraw pool, finalize it as withdrawn now.
-    if (fields.logoutTime) {
-        await markWithdrawnIfPicked(phone);
-    }
+    // NOTE: deliberately does NOT touch withdraw_pool here. Automatic/system
+    // logouts (19:00 lock, idle timeout, re-login bump) go through this
+    // function but must NOT move a picked number to Withdrawn — only an
+    // explicit, manual /logout call should do that. See the /logout route.
 }
 
 async function addAccount(phone, password) {
@@ -667,6 +664,7 @@ module.exports = {
     getWithdrawPool,
     bulkAddWithdrawNumbers,
     removeWithdrawNumber,
+    markWithdrawnIfPicked,
     recycleWithdrawnToAvailable,
     finalizeStalePickedNumbers,
     TWENTY_FOUR_HOURS_MS,
