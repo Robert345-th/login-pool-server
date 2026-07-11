@@ -13,8 +13,10 @@ const {
     addBadPasswordAccount,
     removeBadPasswordAccount,
     getWithdrawPool,
-    bulkAddWithdrawNumbers,
     removeWithdrawNumber,
+    addAccountEverywhere,
+    recycleWithdrawnToAvailable,
+    finalizeStalePickedNumbers,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
     LOW_ACCOUNT_LOCK_HOUR,
@@ -38,6 +40,8 @@ app.use((req, res, next) => {
 
 let poolLocked = false;
 let poolLockedReason = '';
+let withdrawLocked = false;
+let withdrawLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
@@ -141,6 +145,47 @@ setInterval(async () => {
     }
 }, 10 * 1000);
 
+// Withdraw-pool auto-recycle: whenever Available hits 0 (and there's
+// something in Withdrawn to recycle), lock, then move every Withdrawn
+// number back to Available. Next tick will see Available > 0 again and
+// unlock automatically — a self-healing loop, not a permanent lock.
+setInterval(async () => {
+    try {
+        const withdrawPool = await getWithdrawPool();
+        const availableCount = withdrawPool.filter(w => w.status === 'AVAILABLE').length;
+        const withdrawnCount = withdrawPool.filter(w => w.status === 'WITHDRAWN').length;
+
+        if (availableCount === 0 && withdrawnCount > 0) {
+            withdrawLocked = true;
+            withdrawLockedReason = `Available reached 0 — recycling ${withdrawnCount} withdrawn number(s) back to Available.`;
+            console.log(withdrawLockedReason);
+            await recycleWithdrawnToAvailable();
+        } else {
+            if (withdrawLocked) {
+                withdrawLocked = false;
+                withdrawLockedReason = '';
+                console.log('Withdraw pool unlocked — numbers available again.');
+            }
+        }
+    } catch (e) {
+        console.error('withdraw-recycle error:', e);
+    }
+}, 30 * 1000);
+
+// Safety net: numbers stuck in 'PICKED' for 5+ minutes without a logout
+// get finalized to 'WITHDRAWN' automatically, so nothing sits invisibly
+// between Available and Withdrawn forever.
+setInterval(async () => {
+    try {
+        const result = await finalizeStalePickedNumbers();
+        if (result.finalized > 0) {
+            console.log(`[PICKED timeout] Finalized ${result.finalized} stale picked number(s) to Withdrawn.`);
+        }
+    } catch (e) {
+        console.error('finalize-stale-picked error:', e);
+    }
+}, 60 * 1000);
+
 app.get('/stats', async (req, res) => {
     const accounts = await getAccounts();
     const badPasswordAccounts = await getBadPasswordAccounts();
@@ -151,9 +196,12 @@ app.get('/stats', async (req, res) => {
         waiting: accounts.filter(a => a.status === 'IN-USE' && a.logoutTime).length,
         badPassword: badPasswordAccounts.length,
         available: withdrawPool.filter(w => w.status === 'AVAILABLE').length,
+        picked: withdrawPool.filter(w => w.status === 'PICKED').length,
         withdrawn: withdrawPool.filter(w => w.status === 'WITHDRAWN').length,
         locked: poolLocked,
-        reason: poolLockedReason
+        reason: poolLockedReason,
+        withdrawLocked: withdrawLocked,
+        withdrawLockedReason: withdrawLockedReason
     });
 });
 
@@ -411,9 +459,6 @@ app.get('/', async (req, res) => {
         .add-input{flex:1;min-width:120px;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none}
         .add-input::placeholder{color:#4b5563}
         .add-btn{background:#1a3a6e;border:none;color:#a8d0ff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .bulk-textarea{width:100%;min-height:100px;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 14px;border-radius:8px;font-size:13px;outline:none;font-family:monospace;resize:vertical;margin-bottom:10px}
-        .bulk-textarea::placeholder{color:#4b5563}
-        .bulk-btn{background:#0f3a3a;border:none;color:#7de8e8;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
         .reset-btn{width:100%;background:#130a0a;border:1.5px solid #3d1515;color:#f85149;padding:13px;border-radius:12px;font-size:13px;font-weight:500;cursor:pointer}
         .footer{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
         .tick{font-size:11px;color:#3fb950;font-family:monospace;opacity:0.7}
@@ -464,7 +509,7 @@ app.get('/', async (req, res) => {
         <div class="box box-available">
             <div class="box-label available-col">&#128230; Available</div>
             <div class="box-num num-available" id="num-available">${availableAccounts.length}</div>
-            <div class="box-desc desc-available">Ready to be withdrawn</div>
+            <div class="box-desc desc-available" id="available-desc">${withdrawLocked ? withdrawLockedReason : 'Ready to be withdrawn'}</div>
             <a href="/view/available" class="view-btn">View <span class="view-count" id="cnt-available">${availableAccounts.length}</span></a>
         </div>
         <div class="box box-withdrawn">
@@ -475,19 +520,13 @@ app.get('/', async (req, res) => {
         </div>
     </div>
     <div class="add-box">
-        <div class="add-title">&#43; Add account</div>
+        <div class="add-title">&#43; Add account (adds to both Free and Available)</div>
         <div class="add-row">
             <input class="add-input" id="inp-phone" placeholder="Phone number" type="text">
             <input class="add-input" id="inp-pass" placeholder="Password" type="text">
             <button class="add-btn" onclick="addAccount()">Add</button>
         </div>
         <div class="msg" id="add-msg"></div>
-    </div>
-    <div class="add-box">
-        <div class="add-title">&#128230; Bulk add numbers (Available)</div>
-        <textarea class="bulk-textarea" id="bulk-numbers" placeholder="Paste numbers here — one per line, or separated by commas/spaces"></textarea>
-        <button class="bulk-btn" onclick="bulkAddNumbers()">Add to Available</button>
-        <div class="msg" id="bulk-msg"></div>
     </div>
     <div class="footer">
         <span class="tick" id="tick">--:--:--</span>
@@ -521,6 +560,8 @@ app.get('/', async (req, res) => {
             document.getElementById('cnt-bad').textContent=d.badPassword;
             document.getElementById('cnt-available').textContent=d.available;
             document.getElementById('cnt-withdrawn').textContent=d.withdrawn;
+            const availDesc=document.getElementById('available-desc');
+            if(availDesc){availDesc.textContent=d.withdrawLocked?d.withdrawLockedReason:'Ready to be withdrawn';}
             const pill=document.getElementById('pill');
             pill.className=d.locked?'locked-pill':'live-pill';
             pill.innerHTML=d.locked?'<div class="lock-dot"></div> Locked':'<div class="live-dot"></div> Live';
@@ -551,15 +592,6 @@ app.get('/', async (req, res) => {
         .then(r=>r.json()).then(d=>{
             if(d.success){showMsg('add-msg','Account '+phone+' added!',true);document.getElementById('inp-phone').value='';document.getElementById('inp-pass').value='';refreshStats();}
             else{showMsg('add-msg',d.error,false);}
-        });
-    }
-    function bulkAddNumbers(){
-        const numbers=document.getElementById('bulk-numbers').value.trim();
-        if(!numbers){showMsg('bulk-msg','Paste at least one number',false);return;}
-        fetch('/bulk-add-numbers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({numbers})})
-        .then(r=>r.json()).then(d=>{
-            if(d.success){showMsg('bulk-msg',d.inserted+' of '+d.total+' numbers added to Available',true);document.getElementById('bulk-numbers').value='';refreshStats();}
-            else{showMsg('bulk-msg',d.error,false);}
         });
     }
     setInterval(update,1);setInterval(refreshStats,1000);update();refreshStats();
@@ -708,24 +740,10 @@ app.post('/add-account', async (req, res) => {
     if (!phone || !password) return res.json({ success: false, error: 'Phone and password required.' });
     const accounts = await getAccounts();
     if (accounts.find(a => a.phone === phone)) return res.json({ success: false, error: 'Account already exists.' });
-    await addAccount(phone, password);
+    // Adds to both the login pool (Free) and the withdraw pool (Available)
+    // in one transaction — this is the only way accounts get added now.
+    await addAccountEverywhere(phone, password);
     res.json({ success: true });
-});
-
-app.post('/bulk-add-numbers', async (req, res) => {
-    const { numbers } = req.body;
-    if (!numbers) return res.json({ success: false, error: 'No numbers provided.' });
-    const list = [...new Set(
-        numbers.split(/[\s,]+/).map(s => s.trim()).filter(Boolean)
-    )];
-    if (list.length === 0) return res.json({ success: false, error: 'No valid numbers found.' });
-    try {
-        const result = await bulkAddWithdrawNumbers(list);
-        res.json({ success: true, inserted: result.inserted, total: list.length });
-    } catch (e) {
-        console.error('bulk-add-numbers error:', e);
-        res.json({ success: false, error: 'Server error, please retry.' });
-    }
 });
 
 app.post('/remove-withdraw-number', async (req, res) => {
