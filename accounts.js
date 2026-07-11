@@ -646,11 +646,12 @@ async function removeWithdrawNumber(phone) {
     await pool.query('DELETE FROM withdraw_pool WHERE phone = $1', [phone]);
 }
 
-// Marks a number as PICKED — the only thing that changes is withdraw_pool.
-// Nothing in `accounts` (Free/In-Use/Waiting) is touched.
+// Marks a number as WITHDRAWN immediately — no PICKED waiting step, no
+// logout dependency, no 5-minute timer. The only thing that changes is
+// withdraw_pool. Nothing in `accounts` (Free/In-Use/Waiting) is touched.
 async function pickWithdrawNumber(phone) {
     const { rows } = await pool.query(
-        `UPDATE withdraw_pool SET status = 'PICKED', picked_at = $2 WHERE phone = $1 AND status = 'AVAILABLE' RETURNING phone`,
+        `UPDATE withdraw_pool SET status = 'WITHDRAWN', picked_at = $2, withdrawn_at = $2 WHERE phone = $1 AND status = 'AVAILABLE' RETURNING phone`,
         [phone, Date.now()]
     );
     return rows.length > 0;
@@ -658,7 +659,7 @@ async function pickWithdrawNumber(phone) {
 
 // Same idea as claimFreeAccount, but for withdraw_pool: grabs the oldest
 // AVAILABLE number automatically (caller doesn't choose which one) and
-// marks it PICKED in one transaction. Only touches withdraw_pool.
+// marks it WITHDRAWN immediately in one transaction. Only touches withdraw_pool.
 async function requestAvailableNumber() {
     const client = await pool.connect();
     try {
@@ -676,7 +677,7 @@ async function requestAvailableNumber() {
         }
         const { phone, password } = rows[0];
         await client.query(
-            `UPDATE withdraw_pool SET status = 'PICKED', picked_at = $2 WHERE phone = $1`,
+            `UPDATE withdraw_pool SET status = 'WITHDRAWN', picked_at = $2, withdrawn_at = $2 WHERE phone = $1`,
             [phone, Date.now()]
         );
         await client.query('COMMIT');
