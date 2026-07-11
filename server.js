@@ -12,7 +12,9 @@ const {
     getBadPasswordAccounts,
     addBadPasswordAccount,
     removeBadPasswordAccount,
-    bulkAddNumbers,
+    getWithdrawPool,
+    bulkAddWithdrawNumbers,
+    removeWithdrawNumber,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
     LOW_ACCOUNT_LOCK_HOUR,
@@ -142,13 +144,14 @@ setInterval(async () => {
 app.get('/stats', async (req, res) => {
     const accounts = await getAccounts();
     const badPasswordAccounts = await getBadPasswordAccounts();
+    const withdrawPool = await getWithdrawPool();
     res.json({
         free: accounts.filter(a => a.status === 'FREE').length,
         inUse: accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime).length,
         waiting: accounts.filter(a => a.status === 'IN-USE' && a.logoutTime).length,
         badPassword: badPasswordAccounts.length,
-        available: accounts.filter(a => a.status === 'AVAILABLE').length,
-        withdrawn: accounts.filter(a => a.status === 'WITHDRAWN').length,
+        available: withdrawPool.filter(w => w.status === 'AVAILABLE').length,
+        withdrawn: withdrawPool.filter(w => w.status === 'WITHDRAWN').length,
         locked: poolLocked,
         reason: poolLockedReason
     });
@@ -344,7 +347,7 @@ function listPage(title, subtitle, rows, type) {
     function confirmRemove(){
         const pin=document.getElementById('pin-input').value.trim();
         if(pin!=='1234'){document.getElementById('pin-err').style.display='block';document.getElementById('pin-input').value='';return;}
-        const endpoint=listType==='bad'?'/remove-bad-password':'/remove-account';
+        const endpoint=listType==='bad'?'/remove-bad-password':(listType==='available'||listType==='withdrawn')?'/remove-withdraw-number':'/remove-account';
         fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:pendingPhone,pin})})
         .then(r=>r.json()).then(d=>{
             if(d.success){closePin();const row=document.querySelector('[data-phone="'+pendingPhone+'"]');if(row)row.remove();}
@@ -364,8 +367,9 @@ app.get('/', async (req, res) => {
     const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
     const waitingAccounts = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime);
     const badPasswordAccounts = await getBadPasswordAccounts();
-    const availableAccounts = accounts.filter(a => a.status === 'AVAILABLE');
-    const withdrawnAccounts = accounts.filter(a => a.status === 'WITHDRAWN');
+    const withdrawPool = await getWithdrawPool();
+    const availableAccounts = withdrawPool.filter(w => w.status === 'AVAILABLE');
+    const withdrawnAccounts = withdrawPool.filter(w => w.status === 'WITHDRAWN');
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -581,14 +585,14 @@ app.get('/view/free', async (req, res) => {
 });
 
 app.get('/view/available', async (req, res) => {
-    const accounts = await getAccounts();
-    const list = accounts.filter(a => a.status === 'AVAILABLE').sort((a, b) => a.phone.localeCompare(b.phone));
+    const withdrawPool = await getWithdrawPool();
+    const list = withdrawPool.filter(w => w.status === 'AVAILABLE').sort((a, b) => a.phone.localeCompare(b.phone));
     res.send(listPage('Available Numbers', list.length + ' numbers ready to withdraw', list, 'available'));
 });
 
 app.get('/view/withdrawn', async (req, res) => {
-    const accounts = await getAccounts();
-    const list = accounts.filter(a => a.status === 'WITHDRAWN').sort((a, b) => a.phone.localeCompare(b.phone));
+    const withdrawPool = await getWithdrawPool();
+    const list = withdrawPool.filter(w => w.status === 'WITHDRAWN').sort((a, b) => a.phone.localeCompare(b.phone));
     res.send(listPage('Withdrawn Numbers', list.length + ' numbers already withdrawn', list, 'withdrawn'));
 });
 
@@ -716,12 +720,19 @@ app.post('/bulk-add-numbers', async (req, res) => {
     )];
     if (list.length === 0) return res.json({ success: false, error: 'No valid numbers found.' });
     try {
-        const result = await bulkAddNumbers(list);
+        const result = await bulkAddWithdrawNumbers(list);
         res.json({ success: true, inserted: result.inserted, total: list.length });
     } catch (e) {
         console.error('bulk-add-numbers error:', e);
         res.json({ success: false, error: 'Server error, please retry.' });
     }
+});
+
+app.post('/remove-withdraw-number', async (req, res) => {
+    const { phone, pin } = req.body;
+    if (pin !== REMOVE_PASSWORD) return res.json({ success: false, error: 'Incorrect password.' });
+    await removeWithdrawNumber(phone);
+    res.json({ success: true });
 });
 
 app.post('/remove-account', async (req, res) => {
