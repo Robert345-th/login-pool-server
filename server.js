@@ -12,14 +12,6 @@ const {
     getBadPasswordAccounts,
     addBadPasswordAccount,
     removeBadPasswordAccount,
-    getWithdrawPool,
-    removeWithdrawNumber,
-    pickWithdrawNumber,
-    requestAvailableNumber,
-    markWithdrawnIfPicked,
-    addAccountEverywhere,
-    recycleWithdrawnToAvailable,
-    finalizeStalePickedNumbers,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
     LOW_ACCOUNT_LOCK_HOUR,
@@ -43,8 +35,6 @@ app.use((req, res, next) => {
 
 let poolLocked = false;
 let poolLockedReason = '';
-let withdrawLocked = false;
-let withdrawLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
@@ -148,63 +138,16 @@ setInterval(async () => {
     }
 }, 10 * 1000);
 
-// Withdraw-pool auto-recycle: whenever Available hits 0 (and there's
-// something in Withdrawn to recycle), lock, then move every Withdrawn
-// number back to Available. Next tick will see Available > 0 again and
-// unlock automatically — a self-healing loop, not a permanent lock.
-setInterval(async () => {
-    try {
-        const withdrawPool = await getWithdrawPool();
-        const availableCount = withdrawPool.filter(w => w.status === 'AVAILABLE').length;
-        const withdrawnCount = withdrawPool.filter(w => w.status === 'WITHDRAWN').length;
-
-        if (availableCount === 0 && withdrawnCount > 0) {
-            withdrawLocked = true;
-            withdrawLockedReason = `Available reached 0 — recycling ${withdrawnCount} withdrawn number(s) back to Available.`;
-            console.log(withdrawLockedReason);
-            await recycleWithdrawnToAvailable();
-        } else {
-            if (withdrawLocked) {
-                withdrawLocked = false;
-                withdrawLockedReason = '';
-                console.log('Withdraw pool unlocked — numbers available again.');
-            }
-        }
-    } catch (e) {
-        console.error('withdraw-recycle error:', e);
-    }
-}, 30 * 1000);
-
-// Safety net: numbers stuck in 'PICKED' for 5+ minutes without a logout
-// get finalized to 'WITHDRAWN' automatically, so nothing sits invisibly
-// between Available and Withdrawn forever.
-setInterval(async () => {
-    try {
-        const result = await finalizeStalePickedNumbers();
-        if (result.finalized > 0) {
-            console.log(`[PICKED timeout] Finalized ${result.finalized} stale picked number(s) to Withdrawn.`);
-        }
-    } catch (e) {
-        console.error('finalize-stale-picked error:', e);
-    }
-}, 60 * 1000);
-
 app.get('/stats', async (req, res) => {
     const accounts = await getAccounts();
     const badPasswordAccounts = await getBadPasswordAccounts();
-    const withdrawPool = await getWithdrawPool();
     res.json({
         free: accounts.filter(a => a.status === 'FREE').length,
         inUse: accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime).length,
         waiting: accounts.filter(a => a.status === 'IN-USE' && a.logoutTime).length,
         badPassword: badPasswordAccounts.length,
-        available: withdrawPool.filter(w => w.status === 'AVAILABLE').length,
-        picked: withdrawPool.filter(w => w.status === 'PICKED').length,
-        withdrawn: withdrawPool.filter(w => w.status === 'WITHDRAWN').length,
         locked: poolLocked,
-        reason: poolLockedReason,
-        withdrawLocked: withdrawLocked,
-        withdrawLockedReason: withdrawLockedReason
+        reason: poolLockedReason
     });
 });
 
@@ -317,7 +260,6 @@ function waitingPage(rows) {
 }
 
 function listPage(title, subtitle, rows, type) {
-    const showRemove = (type === 'free' || type === 'bad' || type === 'available' || type === 'withdrawn');
     const rowsHtml = rows.length
         ? rows.map((r, i) => `
             <div class="row" data-phone="${r.phone}">
@@ -327,8 +269,7 @@ function listPage(title, subtitle, rows, type) {
                     ${r.password ? `<div class="row-pass">${r.password}</div>` : ''}
                     ${r.reportedAt ? `<div class="row-time">&#9888; Reported at ${r.reportedAt}</div>` : ''}
                 </div>
-                ${type === 'available' ? `<button class="pick-btn" onclick="pickNumber('${r.phone}')">Pick</button>` : ''}
-                ${showRemove ? `<button class="rm-btn" onclick="removeAccount('${r.phone}')">Remove</button>` : ''}
+                ${type === 'free' || type === 'bad' ? `<button class="rm-btn" onclick="removeAccount('${r.phone}')">Remove</button>` : ''}
             </div>`).join('')
         : `<div class="empty">No accounts</div>`;
     return `<!DOCTYPE html>
@@ -355,7 +296,6 @@ function listPage(title, subtitle, rows, type) {
         .row-pass{font-size:11px;color:#4b5563;margin-top:2px}
         .row-time{font-size:11px;color:#f87171;margin-top:2px}
         .rm-btn{background:#2d0a0a;border:1px solid #7f1d1d;color:#f87171;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0}
-        .pick-btn{background:#0a1a2d;border:1px solid #1d4e7f;color:#71b4f8;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;margin-right:6px}
         .empty{padding:40px;text-align:center;color:#4b5563;font-size:13px}
         .hidden{display:none}
         .pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
@@ -397,17 +337,10 @@ function listPage(title, subtitle, rows, type) {
     const listType='${type}';
     function removeAccount(phone){pendingPhone=phone;document.getElementById('pin-input').value='';document.getElementById('pin-err').style.display='none';document.getElementById('pin-modal').style.display='flex';setTimeout(()=>document.getElementById('pin-input').focus(),100);}
     function closePin(){pendingPhone=null;document.getElementById('pin-modal').style.display='none';}
-    function pickNumber(phone){
-        fetch('/pick-number',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})})
-        .then(r=>r.json()).then(d=>{
-            if(d.success){const row=document.querySelector('[data-phone="'+phone+'"]');if(row)row.remove();}
-            else{alert(d.error||'Could not pick number');}
-        });
-    }
     function confirmRemove(){
         const pin=document.getElementById('pin-input').value.trim();
         if(pin!=='1234'){document.getElementById('pin-err').style.display='block';document.getElementById('pin-input').value='';return;}
-        const endpoint=listType==='bad'?'/remove-bad-password':(listType==='available'||listType==='withdrawn')?'/remove-withdraw-number':'/remove-account';
+        const endpoint=listType==='bad'?'/remove-bad-password':'/remove-account';
         fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:pendingPhone,pin})})
         .then(r=>r.json()).then(d=>{
             if(d.success){closePin();const row=document.querySelector('[data-phone="'+pendingPhone+'"]');if(row)row.remove();}
@@ -427,9 +360,6 @@ app.get('/', async (req, res) => {
     const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
     const waitingAccounts = accounts.filter(a => a.status === 'IN-USE' && a.logoutTime);
     const badPasswordAccounts = await getBadPasswordAccounts();
-    const withdrawPool = await getWithdrawPool();
-    const availableAccounts = withdrawPool.filter(w => w.status === 'AVAILABLE');
-    const withdrawnAccounts = withdrawPool.filter(w => w.status === 'WITHDRAWN');
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -446,20 +376,18 @@ app.get('/', async (req, res) => {
         .live-dot{width:7px;height:7px;background:#3fb950;border-radius:50%;animation:blink 1.2s infinite}
         .lock-dot{width:7px;height:7px;background:#f87171;border-radius:50%;animation:blink 0.8s infinite}
         @keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
-        .four-boxes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px}
+        .four-boxes{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:20px}
         .box{border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0}
         .box-free{background:#0a1a0f;border:1.5px solid #1a4a27}
         .box-inuse{background:#080f1f;border:1.5px solid #1a2f55}
         .box-waiting{background:#120c22;border:1.5px solid #2e1f55}
         .box-bad{background:#1a0f0a;border:1.5px solid #4a1f0a}
-        .box-available{background:#0a1a1a;border:1.5px solid #1a4a4a}
-        .box-withdrawn{background:#14141a;border:1.5px solid #35354a}
         .box-label{font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
-        .free-col{color:#3fb950}.inuse-col{color:#58a6ff}.waiting-col{color:#c4b5fd}.bad-col{color:#fb923c}.available-col{color:#2dd4bf}.withdrawn-col{color:#a5b4fc}
+        .free-col{color:#3fb950}.inuse-col{color:#58a6ff}.waiting-col{color:#c4b5fd}.bad-col{color:#fb923c}
         .box-num{font-size:56px;font-weight:500;line-height:1;letter-spacing:-3px;margin-bottom:8px}
-        .num-free{color:#3fb950}.num-inuse{color:#58a6ff}.num-waiting{color:#c4b5fd}.num-bad{color:#fb923c}.num-available{color:#2dd4bf}.num-withdrawn{color:#a5b4fc}
+        .num-free{color:#3fb950}.num-inuse{color:#58a6ff}.num-waiting{color:#c4b5fd}.num-bad{color:#fb923c}
         .box-desc{font-size:11px;margin-bottom:16px;flex:1;line-height:1.4}
-        .desc-free{color:#2a6e3a}.desc-inuse{color:#1e4a7a}.desc-waiting{color:#4a3080}.desc-bad{color:#7a3a10}.desc-available{color:#206e6e}.desc-withdrawn{color:#3a3a55}
+        .desc-free{color:#2a6e3a}.desc-inuse{color:#1e4a7a}.desc-waiting{color:#4a3080}.desc-bad{color:#7a3a10}
         .unlock-timer{font-size:15px;font-weight:500;color:#fff;margin-bottom:3px}
         .unlock-sub{font-size:10px;color:#4b1111;margin-bottom:12px}
         .view-btn{width:100%;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:none;background:#92400e;color:#fed7aa;text-decoration:none}
@@ -518,21 +446,9 @@ app.get('/', async (req, res) => {
             <div class="box-desc desc-bad">Login failed</div>
             <a href="/view/bad" class="view-btn">View <span class="view-count" id="cnt-bad">${badPasswordAccounts.length}</span></a>
         </div>
-        <div class="box box-available">
-            <div class="box-label available-col">&#128230; Available</div>
-            <div class="box-num num-available" id="num-available">${availableAccounts.length}</div>
-            <div class="box-desc desc-available" id="available-desc">${withdrawLocked ? withdrawLockedReason : 'Ready to be withdrawn'}</div>
-            <a href="/view/available" class="view-btn">View <span class="view-count" id="cnt-available">${availableAccounts.length}</span></a>
-        </div>
-        <div class="box box-withdrawn">
-            <div class="box-label withdrawn-col">&#128229; Withdrawn</div>
-            <div class="box-num num-withdrawn" id="num-withdrawn">${withdrawnAccounts.length}</div>
-            <div class="box-desc desc-withdrawn">Already picked up</div>
-            <a href="/view/withdrawn" class="view-btn">View <span class="view-count" id="cnt-withdrawn">${withdrawnAccounts.length}</span></a>
-        </div>
     </div>
     <div class="add-box">
-        <div class="add-title">&#43; Add account (adds to both Free and Available)</div>
+        <div class="add-title">&#43; Add account</div>
         <div class="add-row">
             <input class="add-input" id="inp-phone" placeholder="Phone number" type="text">
             <input class="add-input" id="inp-pass" placeholder="Password" type="text">
@@ -564,16 +480,10 @@ app.get('/', async (req, res) => {
             document.getElementById('num-inuse').textContent=d.inUse;
             document.getElementById('num-waiting').textContent=d.waiting;
             document.getElementById('num-bad').textContent=d.badPassword;
-            document.getElementById('num-available').textContent=d.available;
-            document.getElementById('num-withdrawn').textContent=d.withdrawn;
             document.getElementById('cnt-free').textContent=d.free;
             document.getElementById('cnt-inuse').textContent=d.inUse;
             document.getElementById('cnt-waiting').textContent=d.waiting;
             document.getElementById('cnt-bad').textContent=d.badPassword;
-            document.getElementById('cnt-available').textContent=d.available;
-            document.getElementById('cnt-withdrawn').textContent=d.withdrawn;
-            const availDesc=document.getElementById('available-desc');
-            if(availDesc){availDesc.textContent=d.withdrawLocked?d.withdrawLockedReason:'Ready to be withdrawn';}
             const pill=document.getElementById('pill');
             pill.className=d.locked?'locked-pill':'live-pill';
             pill.innerHTML=d.locked?'<div class="lock-dot"></div> Locked':'<div class="live-dot"></div> Live';
@@ -595,15 +505,15 @@ app.get('/', async (req, res) => {
             }
         }).catch(()=>{});
     }
-    function showMsg(id,text,ok){const el=document.getElementById(id);el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
+    function showMsg(text,ok){const el=document.getElementById('add-msg');el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
     function addAccount(){
         const phone=document.getElementById('inp-phone').value.trim();
         const password=document.getElementById('inp-pass').value.trim();
-        if(!phone||!password){showMsg('add-msg','Phone and password required',false);return;}
+        if(!phone||!password){showMsg('Phone and password required',false);return;}
         fetch('/add-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})})
         .then(r=>r.json()).then(d=>{
-            if(d.success){showMsg('add-msg','Account '+phone+' added!',true);document.getElementById('inp-phone').value='';document.getElementById('inp-pass').value='';refreshStats();}
-            else{showMsg('add-msg',d.error,false);}
+            if(d.success){showMsg('Account '+phone+' added!',true);document.getElementById('inp-phone').value='';document.getElementById('inp-pass').value='';refreshStats();}
+            else{showMsg(d.error,false);}
         });
     }
     setInterval(update,1);setInterval(refreshStats,1000);update();refreshStats();
@@ -626,18 +536,6 @@ app.get('/view/free', async (req, res) => {
             return 0;
         });
     res.send(listPage('Free Accounts', list.length + ' accounts ready', list, 'free'));
-});
-
-app.get('/view/available', async (req, res) => {
-    const withdrawPool = await getWithdrawPool();
-    const list = withdrawPool.filter(w => w.status === 'AVAILABLE').sort((a, b) => a.phone.localeCompare(b.phone));
-    res.send(listPage('Available Numbers', list.length + ' numbers ready to withdraw', list, 'available'));
-});
-
-app.get('/view/withdrawn', async (req, res) => {
-    const withdrawPool = await getWithdrawPool();
-    const list = withdrawPool.filter(w => w.status === 'WITHDRAWN').sort((a, b) => a.phone.localeCompare(b.phone));
-    res.send(listPage('Withdrawn Numbers', list.length + ' numbers already withdrawn', list, 'withdrawn'));
 });
 
 app.get('/view/inuse', async (req, res) => {
@@ -752,41 +650,8 @@ app.post('/add-account', async (req, res) => {
     if (!phone || !password) return res.json({ success: false, error: 'Phone and password required.' });
     const accounts = await getAccounts();
     if (accounts.find(a => a.phone === phone)) return res.json({ success: false, error: 'Account already exists.' });
-    // Adds to both the login pool (Free) and the withdraw pool (Available)
-    // in one transaction — this is the only way accounts get added now.
-    await addAccountEverywhere(phone, password);
+    await addAccount(phone, password);
     res.json({ success: true });
-});
-
-app.post('/remove-withdraw-number', async (req, res) => {
-    const { phone, pin } = req.body;
-    if (pin !== REMOVE_PASSWORD) return res.json({ success: false, error: 'Incorrect password.' });
-    await removeWithdrawNumber(phone);
-    res.json({ success: true });
-});
-
-app.post('/pick-number', async (req, res) => {
-    const { phone } = req.body;
-    if (!phone) return res.json({ success: false, error: 'Phone required.' });
-    const picked = await pickWithdrawNumber(phone);
-    if (picked) return res.json({ success: true });
-    return res.json({ success: false, error: 'Number not available (already picked or withdrawn).' });
-});
-
-// Works like /request-login but for the withdraw pool: no phone needed,
-// just hands back the oldest AVAILABLE number and marks it PICKED.
-// Only touches withdraw_pool — Free/In-Use/Waiting are untouched.
-app.post('/request-available', async (req, res) => {
-    try {
-        const result = await requestAvailableNumber();
-        if (result) {
-            return res.json({ success: true, phone: result.phone, password: result.password });
-        }
-        return res.json({ success: false, error: 'No available numbers.' });
-    } catch (e) {
-        console.error('request-available error:', e);
-        return res.json({ success: false, error: 'Server error, please retry.' });
-    }
 });
 
 app.post('/remove-account', async (req, res) => {
@@ -863,11 +728,6 @@ app.post('/logout', async (req, res) => {
     const account = accounts.find(a => a.phone === phone);
     if (account) {
         await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null, inUseSince: null, tabId: null });
-        // This is the ONLY place a logout can move a picked withdraw number
-        // to Withdrawn — a genuine, manual logout through this route.
-        // Automatic/system logouts (19:00 lock, idle timeout, re-login bump)
-        // never call this, by design.
-        await markWithdrawnIfPicked(phone);
         return res.json({ success: true, message: `Account ${phone} logged out. Will free after 24h.` });
     }
     return res.json({ success: false, error: 'Account not found.' });
