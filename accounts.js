@@ -39,6 +39,17 @@ async function initDB() {
             status TEXT DEFAULT 'BAD_PASSWORD'
         );
     `);
+    // Completely separate table for the Available/Withdrawn feature.
+    // Deliberately NOT the accounts table, so this can never collide
+    // with or overwrite login-pool account statuses.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS withdraw_pool (
+            phone TEXT PRIMARY KEY,
+            status TEXT DEFAULT 'AVAILABLE',
+            added_at BIGINT DEFAULT NULL,
+            withdrawn_at BIGINT DEFAULT NULL
+        );
+    `);
 
     const { rowCount } = await pool.query('SELECT 1 FROM accounts LIMIT 1');
     if (rowCount === 0) {
@@ -527,22 +538,38 @@ async function removeBadPasswordAccount(phone) {
     await pool.query('DELETE FROM bad_password_accounts WHERE phone = $1', [phone]);
 }
 
-// Bulk-insert plain phone numbers with status 'AVAILABLE' and no password.
-// Used by the dashboard's "Bulk add numbers" box. Duplicates (phone already
-// exists under any status) are silently skipped via ON CONFLICT DO NOTHING.
-async function bulkAddNumbers(phones) {
+// ---- Withdraw pool: fully separate from `accounts`, cannot ever touch login accounts ----
+
+async function getWithdrawPool() {
+    const { rows } = await pool.query('SELECT * FROM withdraw_pool ORDER BY phone ASC');
+    return rows.map(r => ({
+        phone: r.phone,
+        status: r.status,
+        addedAt: r.added_at ? Number(r.added_at) : null,
+        withdrawnAt: r.withdrawn_at ? Number(r.withdrawn_at) : null,
+    }));
+}
+
+// Bulk-insert plain phone numbers into withdraw_pool with status 'AVAILABLE'.
+// Duplicates (phone already in this table) are left untouched, not overwritten.
+async function bulkAddWithdrawNumbers(phones) {
     if (!phones || phones.length === 0) return { inserted: 0 };
+    const now = Date.now();
     const values = [];
     const placeholders = [];
     phones.forEach((phone, i) => {
-        placeholders.push(`($${i * 2 + 1}, $${i * 2 + 2}, 'AVAILABLE')`);
-        values.push(phone, '');
+        placeholders.push(`($${i * 2 + 1}, 'AVAILABLE', $${i * 2 + 2})`);
+        values.push(phone, now);
     });
     const { rowCount } = await pool.query(
-        `INSERT INTO accounts (phone, password, status) VALUES ${placeholders.join(', ')} ON CONFLICT (phone) DO NOTHING`,
+        `INSERT INTO withdraw_pool (phone, status, added_at) VALUES ${placeholders.join(', ')} ON CONFLICT (phone) DO NOTHING`,
         values
     );
     return { inserted: rowCount };
+}
+
+async function removeWithdrawNumber(phone) {
+    await pool.query('DELETE FROM withdraw_pool WHERE phone = $1', [phone]);
 }
 
 module.exports = {
@@ -559,7 +586,9 @@ module.exports = {
     getBadPasswordAccounts,
     addBadPasswordAccount,
     removeBadPasswordAccount,
-    bulkAddNumbers,
+    getWithdrawPool,
+    bulkAddWithdrawNumbers,
+    removeWithdrawNumber,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
     LOW_ACCOUNT_LOCK_HOUR,
