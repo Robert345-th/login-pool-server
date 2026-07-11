@@ -646,6 +646,16 @@ async function removeWithdrawNumber(phone) {
     await pool.query('DELETE FROM withdraw_pool WHERE phone = $1', [phone]);
 }
 
+// Marks a number as PICKED — the only thing that changes is withdraw_pool.
+// Nothing in `accounts` (Free/In-Use/Waiting) is touched.
+async function pickWithdrawNumber(phone) {
+    const { rows } = await pool.query(
+        `UPDATE withdraw_pool SET status = 'PICKED', picked_at = $2 WHERE phone = $1 AND status = 'AVAILABLE' RETURNING phone`,
+        [phone, Date.now()]
+    );
+    return rows.length > 0;
+}
+
 module.exports = {
     pool,
     initDB,
@@ -664,6 +674,7 @@ module.exports = {
     getWithdrawPool,
     bulkAddWithdrawNumbers,
     removeWithdrawNumber,
+    pickWithdrawNumber,
     markWithdrawnIfPicked,
     recycleWithdrawnToAvailable,
     finalizeStalePickedNumbers,
