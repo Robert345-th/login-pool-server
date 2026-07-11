@@ -527,6 +527,24 @@ async function removeBadPasswordAccount(phone) {
     await pool.query('DELETE FROM bad_password_accounts WHERE phone = $1', [phone]);
 }
 
+// Bulk-insert plain phone numbers with status 'AVAILABLE' and no password.
+// Used by the dashboard's "Bulk add numbers" box. Duplicates (phone already
+// exists under any status) are silently skipped via ON CONFLICT DO NOTHING.
+async function bulkAddNumbers(phones) {
+    if (!phones || phones.length === 0) return { inserted: 0 };
+    const values = [];
+    const placeholders = [];
+    phones.forEach((phone, i) => {
+        placeholders.push(`($${i * 2 + 1}, $${i * 2 + 2}, 'AVAILABLE')`);
+        values.push(phone, '');
+    });
+    const { rowCount } = await pool.query(
+        `INSERT INTO accounts (phone, password, status) VALUES ${placeholders.join(', ')} ON CONFLICT (phone) DO NOTHING`,
+        values
+    );
+    return { inserted: rowCount };
+}
+
 module.exports = {
     pool,
     initDB,
@@ -541,6 +559,7 @@ module.exports = {
     getBadPasswordAccounts,
     addBadPasswordAccount,
     removeBadPasswordAccount,
+    bulkAddNumbers,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
     LOW_ACCOUNT_LOCK_HOUR,
