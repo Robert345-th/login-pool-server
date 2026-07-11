@@ -14,6 +14,7 @@ const {
     removeBadPasswordAccount,
     getWithdrawPool,
     removeWithdrawNumber,
+    markWithdrawnIfPicked,
     addAccountEverywhere,
     recycleWithdrawnToAvailable,
     finalizeStalePickedNumbers,
@@ -827,6 +828,11 @@ app.post('/logout', async (req, res) => {
     const account = accounts.find(a => a.phone === phone);
     if (account) {
         await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null, inUseSince: null, tabId: null });
+        // This is the ONLY place a logout can move a picked withdraw number
+        // to Withdrawn — a genuine, manual logout through this route.
+        // Automatic/system logouts (19:00 lock, idle timeout, re-login bump)
+        // never call this, by design.
+        await markWithdrawnIfPicked(phone);
         return res.json({ success: true, message: `Account ${phone} logged out. Will free after 24h.` });
     }
     return res.json({ success: false, error: 'Account not found.' });
