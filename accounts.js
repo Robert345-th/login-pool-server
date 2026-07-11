@@ -666,7 +666,7 @@ async function requestAvailableNumber() {
         const { rows } = await client.query(`
             SELECT phone, password FROM withdraw_pool
             WHERE status = 'AVAILABLE'
-            ORDER BY added_at ASC NULLS LAST
+            ORDER BY phone ASC
             LIMIT 1
             FOR UPDATE SKIP LOCKED
         `);
