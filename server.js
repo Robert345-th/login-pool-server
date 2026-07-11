@@ -16,10 +16,8 @@ const {
     removeWithdrawNumber,
     pickWithdrawNumber,
     requestAvailableNumber,
-    markWithdrawnIfPicked,
-    addAccountEverywhere,
     recycleWithdrawnToAvailable,
-    finalizeStalePickedNumbers,
+    addAccountEverywhere,
     TWENTY_FOUR_HOURS_MS,
     FREE_ACCOUNT_LOCK_THRESHOLD,
     LOW_ACCOUNT_LOCK_HOUR,
@@ -43,8 +41,6 @@ app.use((req, res, next) => {
 
 let poolLocked = false;
 let poolLockedReason = '';
-let withdrawLocked = false;
-let withdrawLockedReason = '';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
@@ -148,46 +144,11 @@ setInterval(async () => {
     }
 }, 10 * 1000);
 
-// Withdraw-pool auto-recycle: whenever Available hits 0 (and there's
-// something in Withdrawn to recycle), lock, then move every Withdrawn
-// number back to Available. Next tick will see Available > 0 again and
-// unlock automatically — a self-healing loop, not a permanent lock.
-setInterval(async () => {
-    try {
-        const withdrawPool = await getWithdrawPool();
-        const availableCount = withdrawPool.filter(w => w.status === 'AVAILABLE').length;
-        const withdrawnCount = withdrawPool.filter(w => w.status === 'WITHDRAWN').length;
-
-        if (availableCount === 0 && withdrawnCount > 0) {
-            withdrawLocked = true;
-            withdrawLockedReason = `Available reached 0 — recycling ${withdrawnCount} withdrawn number(s) back to Available.`;
-            console.log(withdrawLockedReason);
-            await recycleWithdrawnToAvailable();
-        } else {
-            if (withdrawLocked) {
-                withdrawLocked = false;
-                withdrawLockedReason = '';
-                console.log('Withdraw pool unlocked — numbers available again.');
-            }
-        }
-    } catch (e) {
-        console.error('withdraw-recycle error:', e);
-    }
-}, 30 * 1000);
-
-// Safety net: numbers stuck in 'PICKED' for 5+ minutes without a logout
-// get finalized to 'WITHDRAWN' automatically, so nothing sits invisibly
-// between Available and Withdrawn forever.
-setInterval(async () => {
-    try {
-        const result = await finalizeStalePickedNumbers();
-        if (result.finalized > 0) {
-            console.log(`[PICKED timeout] Finalized ${result.finalized} stale picked number(s) to Withdrawn.`);
-        }
-    } catch (e) {
-        console.error('finalize-stale-picked error:', e);
-    }
-}, 60 * 1000);
+// NOTE: auto-recycle (Withdrawn -> Available whenever Available hit 0) and
+// the stale-PICKED safety net have both been removed. Numbers now go
+// AVAILABLE -> WITHDRAWN immediately when picked (no PICKED waiting step),
+// and Withdrawn only moves back to Available when someone manually taps
+// the Reset button — see /recycle-withdrawn below.
 
 app.get('/stats', async (req, res) => {
     const accounts = await getAccounts();
@@ -202,9 +163,7 @@ app.get('/stats', async (req, res) => {
         picked: withdrawPool.filter(w => w.status === 'PICKED').length,
         withdrawn: withdrawPool.filter(w => w.status === 'WITHDRAWN').length,
         locked: poolLocked,
-        reason: poolLockedReason,
-        withdrawLocked: withdrawLocked,
-        withdrawLockedReason: withdrawLockedReason
+        reason: poolLockedReason
     });
 });
 
@@ -367,6 +326,8 @@ function listPage(title, subtitle, rows, type) {
         .pin-cancel{flex:1;background:#161b22;border:1px solid #30363d;color:#8b949e;padding:10px;border-radius:8px;font-size:13px;cursor:pointer}
         .pin-confirm{flex:1;background:#7f1d1d;border:none;color:#f87171;padding:10px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
         .pin-err{color:#f87171;font-size:12px;margin-top:10px;display:none}
+        .reset-wrap{padding:14px 20px;border-bottom:1px solid #21262d}
+        .reset-btn{width:100%;background:#0a1a2d;border:1px solid #1d4e7f;color:#71b4f8;padding:10px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
     </style>
 </head>
 <body>
@@ -378,6 +339,7 @@ function listPage(title, subtitle, rows, type) {
     <div class="search-wrap">
         <input class="search-input" id="search" placeholder="&#128269; Search phone number..." oninput="filterRows(this.value)">
     </div>
+    ${type === 'withdrawn' ? `<div class="reset-wrap"><button class="reset-btn" onclick="resetWithdrawn()">&#8635; Reset all to Available</button></div>` : ''}
     <div id="list">${rowsHtml}</div>
 </div>
 <div class="pin-overlay" id="pin-modal" style="display:none;">
@@ -397,6 +359,14 @@ function listPage(title, subtitle, rows, type) {
     const listType='${type}';
     function removeAccount(phone){pendingPhone=phone;document.getElementById('pin-input').value='';document.getElementById('pin-err').style.display='none';document.getElementById('pin-modal').style.display='flex';setTimeout(()=>document.getElementById('pin-input').focus(),100);}
     function closePin(){pendingPhone=null;document.getElementById('pin-modal').style.display='none';}
+    function resetWithdrawn(){
+        if(!confirm('Move ALL withdrawn numbers back to Available?')) return;
+        fetch('/recycle-withdrawn',{method:'POST',headers:{'Content-Type':'application/json'}})
+        .then(r=>r.json()).then(d=>{
+            if(d.success){alert(d.recycled+' number(s) moved back to Available.');window.location.href='/view/available';}
+            else{alert(d.error||'Could not reset.');}
+        });
+    }
     function pickNumber(phone){
         fetch('/pick-number',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})})
         .then(r=>r.json()).then(d=>{
@@ -521,7 +491,7 @@ app.get('/', async (req, res) => {
         <div class="box box-available">
             <div class="box-label available-col">&#128230; Available</div>
             <div class="box-num num-available" id="num-available">${availableAccounts.length}</div>
-            <div class="box-desc desc-available" id="available-desc">${withdrawLocked ? withdrawLockedReason : 'Ready to be withdrawn'}</div>
+            <div class="box-desc desc-available" id="available-desc">Ready to be withdrawn</div>
             <a href="/view/available" class="view-btn">View <span class="view-count" id="cnt-available">${availableAccounts.length}</span></a>
         </div>
         <div class="box box-withdrawn">
@@ -572,8 +542,6 @@ app.get('/', async (req, res) => {
             document.getElementById('cnt-bad').textContent=d.badPassword;
             document.getElementById('cnt-available').textContent=d.available;
             document.getElementById('cnt-withdrawn').textContent=d.withdrawn;
-            const availDesc=document.getElementById('available-desc');
-            if(availDesc){availDesc.textContent=d.withdrawLocked?d.withdrawLockedReason:'Ready to be withdrawn';}
             const pill=document.getElementById('pill');
             pill.className=d.locked?'locked-pill':'live-pill';
             pill.innerHTML=d.locked?'<div class="lock-dot"></div> Locked':'<div class="live-dot"></div> Live';
@@ -774,8 +742,8 @@ app.post('/pick-number', async (req, res) => {
 });
 
 // Works like /request-login but for the withdraw pool: no phone needed,
-// just hands back the oldest AVAILABLE number and marks it PICKED.
-// Only touches withdraw_pool — Free/In-Use/Waiting are untouched.
+// just hands back the oldest AVAILABLE number and marks it WITHDRAWN
+// immediately. Only touches withdraw_pool — Free/In-Use/Waiting are untouched.
 app.post('/request-available', async (req, res) => {
     try {
         const result = await requestAvailableNumber();
@@ -785,6 +753,19 @@ app.post('/request-available', async (req, res) => {
         return res.json({ success: false, error: 'No available numbers.' });
     } catch (e) {
         console.error('request-available error:', e);
+        return res.json({ success: false, error: 'Server error, please retry.' });
+    }
+});
+
+// Manual reset: moves every currently-WITHDRAWN number back to AVAILABLE.
+// This replaces the old automatic "recycle when Available hits 0" behavior
+// — now it only happens when someone taps the Reset button.
+app.post('/recycle-withdrawn', async (req, res) => {
+    try {
+        const result = await recycleWithdrawnToAvailable();
+        return res.json({ success: true, recycled: result.recycled });
+    } catch (e) {
+        console.error('recycle-withdrawn error:', e);
         return res.json({ success: false, error: 'Server error, please retry.' });
     }
 });
@@ -863,11 +844,6 @@ app.post('/logout', async (req, res) => {
     const account = accounts.find(a => a.phone === phone);
     if (account) {
         await updateAccount(phone, { logoutTime: Date.now(), logoutTimeStr: logoutTime, lastHeartbeat: null, inUseSince: null, tabId: null });
-        // This is the ONLY place a logout can move a picked withdraw number
-        // to Withdrawn — a genuine, manual logout through this route.
-        // Automatic/system logouts (19:00 lock, idle timeout, re-login bump)
-        // never call this, by design.
-        await markWithdrawnIfPicked(phone);
         return res.json({ success: true, message: `Account ${phone} logged out. Will free after 24h.` });
     }
     return res.json({ success: false, error: 'Account not found.' });
