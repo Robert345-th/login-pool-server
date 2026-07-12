@@ -70,10 +70,16 @@ setInterval(async () => {
             const timeStr = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
 
             // Check: 3-hour heartbeat silence timeout
-            // Only fires if at least one heartbeat was received AND
-            // the last heartbeat was more than 3 hours ago.
-            // If lastHeartbeat is null, the account never sent one — skip it.
-            if (acc.lastHeartbeat && acc.lastHeartbeat > acc.inUseSince && now - acc.lastHeartbeat > HEARTBEAT_SILENCE_TIMEOUT_MS) {
+            // Fires if the last known heartbeat (which starts out equal to
+            // in_use_since at login, and only gets a later value once a
+            // real /heartbeat ping comes in) is 3+ hours old. Using >=
+            // here is what makes accounts that NEVER send a single
+            // heartbeat after login still get caught — previously this
+            // used a strict >, which meant lastHeartbeat === inUseSince
+            // (the normal case for a tab that never pings) could never
+            // satisfy the condition, leaving those accounts stuck in
+            // IN-USE forever regardless of how many hours passed.
+            if (acc.lastHeartbeat && acc.lastHeartbeat >= acc.inUseSince && now - acc.lastHeartbeat > HEARTBEAT_SILENCE_TIMEOUT_MS) {
                 console.log(`Account ${acc.phone} last heartbeat was 3h+ ago. Moving to waiting.`);
                 await updateAccount(acc.phone, { logoutTime: Date.now(), logoutTimeStr: timeStr + ' (3h no heartbeat)', inUseSince: null, tabId: null });
                 continue;
