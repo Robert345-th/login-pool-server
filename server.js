@@ -99,6 +99,8 @@ function getZambiaTime() {
     return { hour: h, minute: m };
 }
 
+let cutoffApplied = false; // resets each time the pool unlocks
+
 setInterval(async () => {
     const { hour, minute } = getZambiaTime();
     const accounts = await getAccounts();
@@ -118,28 +120,34 @@ setInterval(async () => {
                 ? 'Locked at 18:00. Unlocks at 07:30.'
                 : `Free accounts dropped to ${freeCount}. Locked from 16:00.`;
             console.log(poolLockedReason);
+        }
 
-            // 1 hour after lock time (19:00), move ALL IN USE accounts to Waiting 24h
-            // even if they never requested a new account
-            if (isTimeLocked) {
-                setTimeout(async () => {
-                    try {
-                        const latestAccounts = await getAccounts();
-                        const inUseAccounts = latestAccounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
-                        for (const acc of inUseAccounts) {
-                            const { hour: h, minute: m } = getZambiaTime();
-                            const timeStr = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
-                            await updateAccount(acc.phone, {
-                                logoutTime: Date.now(),
-                                logoutTimeStr: timeStr + ' (19:00 auto)',
-                                inUseSince: null,
-                                tabId: null
-                            });
-                            console.log(`[LOCK 19:00] Moved ${acc.phone} to Waiting.`);
-                        }
-                    } catch(e) { console.error('19:00 auto-move error:', e); }
-                }, 60 * 60 * 1000); // 1 hour after lock
-            }
+        // Past-19:00 cutoff check runs every tick (not just on the lock
+        // transition), so it self-heals even if the server restarted
+        // mid-lock-window and missed the original transition entirely —
+        // that's what was silently skipping this the last few nights.
+        // "Past 19:00" = at least 1 hour into the time-locked window.
+        const minutesSinceLockStart = hour >= 18 ? (hour - 18) * 60 + minute : (hour + 6) * 60 + minute; // handles wrap past midnight
+        const pastCutoff = isTimeLocked && minutesSinceLockStart >= 60;
+
+        if (pastCutoff && !cutoffApplied) {
+            cutoffApplied = true;
+            try {
+                const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
+                const timeStr = String(hour).padStart(2,'0') + ':' + String(minute).padStart(2,'0');
+                for (const acc of inUseAccounts) {
+                    await updateAccount(acc.phone, {
+                        logoutTime: Date.now(),
+                        logoutTimeStr: timeStr + ' (19:00 auto)',
+                        inUseSince: null,
+                        tabId: null
+                    });
+                    console.log(`[LOCK 19:00] Moved ${acc.phone} to Waiting.`);
+                }
+                if (inUseAccounts.length > 0) {
+                    console.log(`[LOCK 19:00] Cutoff applied — moved ${inUseAccounts.length} account(s) to Waiting.`);
+                }
+            } catch (e) { console.error('19:00 auto-move error:', e); }
         }
     } else {
         if (poolLocked) {
@@ -147,6 +155,7 @@ setInterval(async () => {
             poolLockedReason = '';
             console.log('Pool unlocked.');
         }
+        cutoffApplied = false; // ready for tonight's lock cycle
     }
 }, 10 * 1000);
 
