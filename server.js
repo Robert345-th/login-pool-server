@@ -83,6 +83,22 @@ app.get('/icons/icon-512.png', (req, res) => {
 
 let poolLocked = false;
 let poolLockedReason = '';
+// Tracks specifically whether the LOW-ACCOUNT lock is the active reason
+// right now (as opposed to the time lock). This matters because tabs 50+
+// are allowed to bypass the time lock, but NEVER the low-account lock -
+// see getTabNumber() and its use in /request-login below.
+let lowAccountLockActive = false;
+
+// Extracts the numeric part of a tabId like "TAB-050" -> 50. Any tab
+// that doesn't parse to a valid number is treated as below the bypass
+// threshold (blocked), as the safe default.
+function getTabNumber(tabId) {
+    if (!tabId) return 0;
+    const match = String(tabId).match(/(\d+)/);
+    if (!match) return 0;
+    return parseInt(match[1], 10);
+}
+const TIME_LOCK_BYPASS_TAB_THRESHOLD = 50; // tabs >= this number bypass the 18:00-07:30 time lock only
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
@@ -154,6 +170,7 @@ setInterval(async () => {
     // Low account lock: only from 16:00 onwards
     const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
     const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
+    lowAccountLockActive = isLowAccounts; // updated every tick, used by /request-login
 
     if (isTimeLocked || isLowAccounts) {
         if (!poolLocked) {
@@ -175,7 +192,10 @@ setInterval(async () => {
         if (pastCutoff && !cutoffApplied) {
             cutoffApplied = true;
             try {
-                const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime);
+                // Tabs 50+ bypass the time lock entirely, so they're also
+                // exempt from this cutoff sweep - otherwise they'd get
+                // logged out an hour later anyway, defeating the bypass.
+                const inUseAccounts = accounts.filter(a => a.status === 'IN-USE' && !a.logoutTime && getTabNumber(a.tabId) < TIME_LOCK_BYPASS_TAB_THRESHOLD);
                 const timeStr = String(hour).padStart(2,'0') + ':' + String(minute).padStart(2,'0');
                 for (const acc of inUseAccounts) {
                     await updateAccount(acc.phone, {
@@ -621,9 +641,9 @@ app.get('/', async (req, res) => {
             const freeDesc=document.getElementById('free-desc');
             const unlockBlock=document.getElementById('unlock-block');
             if(d.locked){
-                freeBox.style.cssText='background:#1a0a0a;border:1.5px solid #7f1d1d;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
-                freeLabel.style.color='#f87171';freeLabel.innerHTML='&#128274; Free - Locked';
-                freeNum.style.color='#f87171';freeDesc.style.color='#7f2020';freeDesc.textContent=d.reason;
+                freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
+                freeLabel.style.color='#3fb950';freeLabel.innerHTML='&#128274; Free - Locked';
+                freeNum.style.color='#3fb950';freeDesc.style.color='#2a6e3a';freeDesc.textContent=d.reason;
                 unlockBlock.style.display='block';
             } else {
                 freeBox.style.cssText='background:#0a1a0f;border:1.5px solid #1a4a27;border-radius:16px;padding:20px 16px 16px;display:flex;flex-direction:column;min-width:0;';
@@ -855,9 +875,16 @@ app.post('/remove-bad-password', async (req, res) => {
 });
 
 app.post('/request-login', async (req, res) => {
-    if (poolLocked) {
+    const { tabId } = req.body;
+    const tabNumber = getTabNumber(tabId);
+    const bypassesTimeLock = tabNumber >= TIME_LOCK_BYPASS_TAB_THRESHOLD;
+
+    // Low-account lock ALWAYS blocks, no exceptions, regardless of tab number.
+    // Time lock blocks tabs 1-49, but tabs 50+ are allowed straight through.
+    const shouldBlock = lowAccountLockActive || (poolLocked && !bypassesTimeLock);
+
+    if (shouldBlock) {
         // If this tab currently holds an account, move it to Waiting 24h
-        const { tabId } = req.body;
         if (tabId) {
             try {
                 const accounts = await getAccounts();
@@ -877,7 +904,6 @@ app.post('/request-login', async (req, res) => {
         }
         return res.json({ success: false, error: `Pool locked. ${poolLockedReason}` });
     }
-    const { tabId } = req.body;
     // Reject any request that doesn't include a tab ID - every tab must
     // identify itself so the server can track account ownership correctly.
     if (!tabId) return res.json({ success: false, error: 'Tab ID required. No account will be assigned without one.' });
@@ -930,6 +956,144 @@ app.post('/aviator-lock', async (req, res) => {
     return res.json({ success: false, error: 'Account not found.' });
 });
 
+// TEMPORARY one-time route: inserts a specific batch of 114 new phone
+// numbers directly into `accounts` as FREE. Uses ON CONFLICT DO NOTHING
+// so it's safe to visit more than once - it will never create duplicates
+// or overwrite existing accounts. Remove this route after running it once.
+app.get('/one-time-add-new-numbers', async (req, res) => {
+    try {
+        const newNumbers = [
+["574219787", "R54321Z"],
+            ["760008520", "R54321Z"],
+            ["760027536", "R54321Z"],
+            ["760195399", "R54321Z"],
+            ["760245012", "R54321Z"],
+            ["760246915", "R54321Z"],
+            ["760657534", "R54321Z"],
+            ["760657665", "R54321Z"],
+            ["760657864", "R54321Z"],
+            ["760657882", "R54321Z"],
+            ["760658096", "R54321Z"],
+            ["760658232", "R54321Z"],
+            ["760659264", "R54321Z"],
+            ["760660103", "R54321Z"],
+            ["760660319", "R54321Z"],
+            ["760661909", "R54321Z"],
+            ["760662113", "R54321Z"],
+            ["760662878", "R54321Z"],
+            ["760664504", "R54321Z"],
+            ["760665318", "R54321Z"],
+            ["760667567", "R54321Z"],
+            ["760824285", "R54321Z"],
+            ["761495266", "R54321Z"],
+            ["761891537", "R54321Z"],
+            ["761892875", "R54321Z"],
+            ["762149235", "R54321Z"],
+            ["762187147", "R54321Z"],
+            ["762252702", "R54321Z"],
+            ["762482887", "R54321Z"],
+            ["762483087", "R54321Z"],
+            ["762483403", "R54321Z"],
+            ["762483434", "R54321Z"],
+            ["762483790", "R54321Z"],
+            ["762483922", "R54321Z"],
+            ["762483933", "R54321Z"],
+            ["762484123", "R54321Z"],
+            ["762484147", "R54321Z"],
+            ["762484538", "R54321Z"],
+            ["762578180", "R54321Z"],
+            ["762637230", "R54321Z"],
+            ["762650539", "R54321Z"],
+            ["763147163", "R54321Z"],
+            ["763169826", "R54321Z"],
+            ["763172233", "R54321Z"],
+            ["763185490", "R54321Z"],
+            ["763191154", "R54321Z"],
+            ["763202144", "R54321Z"],
+            ["763233600", "R54321Z"],
+            ["764106436", "R54321Z"],
+            ["764170261", "R54321Z"],
+            ["764351842", "R54321Z"],
+            ["764405668", "R54321Z"],
+            ["764603400", "R54321Z"],
+            ["764873246", "R54321Z"],
+            ["764880311", "R54321Z"],
+            ["764963394", "R54321Z"],
+            ["764985130", "R54321Z"],
+            ["765541540", "R54321Z"],
+            ["765750770", "R54321Z"],
+            ["766319933", "R54321Z"],
+            ["766843832", "R54321Z"],
+            ["766962275", "R54321Z"],
+            ["768286318", "R54321Z"],
+            ["768355864", "R54321Z"],
+            ["768855872", "R54321Z"],
+            ["768983308", "R54321Z"],
+            ["769094311", "R54321Z"],
+            ["769666711", "R54321Z"],
+            ["769716107", "R54321Z"],
+            ["769754565", "R54321Z"],
+            ["960711859", "R54321Z"],
+            ["960774585", "R54321Z"],
+            ["962066690", "R54321Z"],
+            ["962068151", "R54321Z"],
+            ["962386121", "R54321Z"],
+            ["962584596", "R54321Z"],
+            ["962878301", "R54321Z"],
+            ["963121772", "R54321Z"],
+            ["963157570", "R54321Z"],
+            ["964218931", "R54321Z"],
+            ["964305408", "R54321Z"],
+            ["964834027", "R54321Z"],
+            ["965014985", "R54321Z"],
+            ["965061302", "R54321Z"],
+            ["965205279", "R54321Z"],
+            ["965207230", "R54321Z"],
+            ["965258783", "R54321Z"],
+            ["965470597", "R54321Z"],
+            ["965563794", "R54321Z"],
+            ["965614985", "R54321Z"],
+            ["965647326", "R54321Z"],
+            ["965650610", "R54321Z"],
+            ["965652119", "R54321Z"],
+            ["965694417", "R54321Z"],
+            ["965913990", "R54321Z"],
+            ["966311946", "R54321Z"],
+            ["966313238", "R54321Z"],
+            ["966315549", "R54321Z"],
+            ["967013455", "R54321Z"],
+            ["967112315", "R54321Z"],
+            ["967169155", "R54321Z"],
+            ["967554507", "R54321Z"],
+            ["967926956", "R54321Z"],
+            ["968047294", "R54321Z"],
+            ["968210232", "R54321Z"],
+            ["968527450", "R54321Z"],
+            ["968659928", "R54321Z"],
+            ["968902910", "R54321Z"],
+            ["969024404", "R54321Z"],
+            ["969150808", "R54321Z"],
+            ["969596631", "R54321Z"],
+            ["969597132", "R54321Z"],
+            ["969597196", "R54321Z"],
+            ["969609705", "R54321Z"],
+        ];
+        const values = [];
+        const placeholders = [];
+        newNumbers.forEach(([phone, password], i) => {
+            placeholders.push(`($${i * 2 + 1}, $${i * 2 + 2})`);
+            values.push(phone, password);
+        });
+        const result = await pool.query(
+            `INSERT INTO accounts (phone, password) VALUES ${placeholders.join(', ')} ON CONFLICT DO NOTHING`,
+            values
+        );
+        res.send(`Done. Inserted ${result.rowCount} new numbers (out of ${newNumbers.length} in the batch - the rest were already present).`);
+    } catch (e) {
+        res.status(500).send('Error: ' + e.message);
+    }
+});
+
 app.post('/reset', async (req, res) => {
     await resetAllAccounts();
     poolLocked = false; poolLockedReason = '';
@@ -966,6 +1130,7 @@ initDB().then(async () => {
     const isTimeLocked = hour >= 18 || hour < 7 || (hour === 7 && minute < 30);
     const afterLowLockTime = hour > LOW_ACCOUNT_LOCK_HOUR || (hour === LOW_ACCOUNT_LOCK_HOUR && minute >= LOW_ACCOUNT_LOCK_MINUTE);
     const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
+    lowAccountLockActive = isLowAccounts;
     if (isTimeLocked || isLowAccounts) {
         poolLocked = true;
         poolLockedReason = isTimeLocked
