@@ -538,9 +538,26 @@ app.get('/', async (req, res) => {
         .msg{font-size:12px;margin-top:10px;padding:8px 12px;border-radius:6px;display:none}
         .msg-ok{background:#0d4429;color:#3fb950}.msg-err{background:#4b1111;color:#f87171}
         @media(max-width:600px){.four-boxes{grid-template-columns:1fr 1fr}.box-num{font-size:44px}}
+        .db{display:none}
+        .lock-overlay{position:fixed;inset:0;background:#04060a;display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
+        .lock-box{background:#0d1117;border:1.5px solid #21262d;border-radius:16px;padding:32px 26px;width:100%;max-width:320px;text-align:center}
+        .lock-title{font-size:16px;font-weight:500;color:#e6edf3;margin-bottom:6px}
+        .lock-sub{font-size:12px;color:#4b5563;margin-bottom:20px}
+        .lock-input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:12px;border-radius:8px;font-size:16px;outline:none;text-align:center;letter-spacing:3px;margin-bottom:14px}
+        .lock-btn{width:100%;background:#1a3a6e;border:none;color:#a8d0ff;padding:12px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+        .lock-err{color:#f87171;font-size:12px;margin-top:12px;display:none}
     </style>
 </head>
 <body>
+<div class="lock-overlay" id="lock-overlay">
+    <div class="lock-box">
+        <div class="lock-title">&#128274; Login Pool Manager</div>
+        <div class="lock-sub">Enter password to continue</div>
+        <input class="lock-input" id="lock-input" type="password" maxlength="30" placeholder="Password" autocomplete="off">
+        <button class="lock-btn" onclick="tryUnlock()">Unlock</button>
+        <div class="lock-err" id="lock-err">Incorrect password</div>
+    </div>
+</div>
 <div class="db">
     <div class="top-bar">
         <div class="db-title">&#128274; Login pool manager</div>
@@ -606,6 +623,31 @@ app.get('/', async (req, res) => {
     </div>
 </div>
 <script>
+    var APP_LOCK_PASSWORD='Robzkay';
+    function unlockApp(){
+        document.getElementById('lock-overlay').style.display='none';
+        document.querySelector('.db').style.display='block';
+    }
+    function tryUnlock(){
+        var val=document.getElementById('lock-input').value;
+        if(val===APP_LOCK_PASSWORD){
+            try{localStorage.setItem('lpm_app_unlocked','yes');}catch(e){}
+            unlockApp();
+        } else {
+            document.getElementById('lock-err').style.display='block';
+            document.getElementById('lock-input').value='';
+        }
+    }
+    (function(){
+        var already=false;
+        try{already=localStorage.getItem('lpm_app_unlocked')==='yes';}catch(e){}
+        if(already){unlockApp();}
+        else{
+            var li=document.getElementById('lock-input');
+            li.addEventListener('keydown',function(e){if(e.key==='Enter')tryUnlock();});
+            setTimeout(function(){li.focus();},100);
+        }
+    })();
     function pad(n){return String(n).padStart(2,'0')}
     function update(){
         const now=new Date();
