@@ -974,8 +974,9 @@ app.post('/request-login', async (req, res) => {
     const bypassesTimeLock = tabNumber >= TIME_LOCK_BYPASS_TAB_THRESHOLD;
 
     // Low-account lock ALWAYS blocks, no exceptions, regardless of tab number.
+    // Manual lock (the dashboard Lock button) ALWAYS blocks too, no exceptions.
     // Time lock blocks tabs 1-49, but tabs 50+ are allowed straight through.
-    const shouldBlock = lowAccountLockActive || (poolLocked && !bypassesTimeLock);
+    const shouldBlock = lowAccountLockActive || manualLock || (poolLocked && !bypassesTimeLock);
 
     if (shouldBlock) {
         // If this tab currently holds an account, move it to Waiting 24h
