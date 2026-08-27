@@ -1139,17 +1139,20 @@ app.get('/one-time-add-new-numbers', async (req, res) => {
 // TEMPORARY one-time route: syncs the login pool so it contains ONLY
 // this exact list of 326 numbers.
 // Rules:
-//   - ANY account NOT in this list -> removed, no exceptions
+//   - ANY account in `accounts` NOT in this list -> removed, no exceptions
 //     (FREE, BAD_PASSWORD, AVAILABLE, WITHDRAWN, WAITING 24H, and even
 //     accounts currently IN-USE / actively logged in are all included)
-//   - Any number in this list NOT already in accounts -> added as FREE
+//   - ANY number in `withdraw_pool` NOT in this list -> removed, no
+//     exceptions (AVAILABLE, PICKED, WITHDRAWN all included)
+//   - Any number in this list NOT already in `accounts` -> added to
+//     `accounts` as FREE (never added to withdraw_pool)
 //   - Safe to visit more than once (idempotent)
 //
 // WARNING: this will delete accounts that are currently logged in
-// (IN-USE) or waiting out their 24h cooldown if their number is not on
-// the list below. Anyone actively using one of those accounts will be
-// logged out / lose access. Make sure that's really what you want
-// before running this.
+// (IN-USE) or waiting out their 24h cooldown, and withdraw_pool entries
+// that are currently PICKED, if their number is not on the list below.
+// Anyone actively using one of those will be logged out / lose access.
+// Make sure that's really what you want before running this.
 //
 // Remove this route after running it once.
 app.get('/one-time-sync-pool', async (req, res) => {
@@ -1484,19 +1487,16 @@ app.get('/one-time-sync-pool', async (req, res) => {
         ];
         const keepSet = new Set(keepNumbers);
 
-        // Load current state of the accounts table
+        // --- accounts table ---
         const { rows: allAccounts } = await pool.query(
             'SELECT phone FROM accounts'
         );
-
         const existingPhones = new Set(allAccounts.map(a => a.phone));
 
-        // Anything not in the keep list gets removed - no exceptions
         const toRemove = allAccounts
             .map(a => a.phone)
             .filter(phone => !keepSet.has(phone));
 
-        // Numbers in the keep list that don't exist yet -> add as FREE
         const toAdd = keepNumbers.filter(p => !existingPhones.has(p));
 
         let removedCount = 0;
@@ -1523,9 +1523,27 @@ app.get('/one-time-sync-pool', async (req, res) => {
             addedCount = result.rowCount;
         }
 
+        // --- withdraw_pool table (Available + Withdrawn + Picked) ---
+        const { rows: allWithdraw } = await pool.query(
+            'SELECT phone FROM withdraw_pool'
+        );
+        const withdrawToRemove = allWithdraw
+            .map(a => a.phone)
+            .filter(phone => !keepSet.has(phone));
+
+        let withdrawRemovedCount = 0;
+        if (withdrawToRemove.length > 0) {
+            const result = await pool.query(
+                `DELETE FROM withdraw_pool WHERE phone = ANY($1)`,
+                [withdrawToRemove]
+            );
+            withdrawRemovedCount = result.rowCount;
+        }
+
         res.send(
-            `Done. Removed ${removedCount} accounts not in the list (all statuses, ` +
-            `no exceptions). Added ${addedCount} new numbers as FREE. ` +
+            `Done. accounts: removed ${removedCount} not in list (all statuses, no exceptions), ` +
+            `added ${addedCount} new numbers as FREE. ` +
+            `withdraw_pool: removed ${withdrawRemovedCount} not in list (Available/Picked/Withdrawn). ` +
             `Kept list size: ${keepNumbers.length}.`
         );
     } catch (e) {
