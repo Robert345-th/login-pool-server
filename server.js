@@ -83,6 +83,12 @@ app.get('/icons/icon-512.png', (req, res) => {
 
 let poolLocked = false;
 let poolLockedReason = '';
+// Manual override toggled from the dashboard's Lock/Unlock button. When
+// true, the pool is forced locked regardless of the automatic time/count
+// checks below. Unlocking just clears the override - if the automatic
+// conditions (time lock or low-account lock) still apply, the pool stays
+// locked for that reason instead.
+let manualLock = false;
 // Tracks specifically whether the LOW-ACCOUNT lock is the active reason
 // right now (as opposed to the time lock). This matters because tabs 50+
 // are allowed to bypass the time lock, but NEVER the low-account lock -
@@ -159,7 +165,11 @@ function getZambiaTime() {
 
 let cutoffApplied = false; // resets each time the pool unlocks
 
-setInterval(async () => {
+// Shared lock-evaluation logic. Runs on the 10s interval below, and is
+// also called immediately by the manual /admin/lock-pool and
+// /admin/unlock-pool endpoints so the dashboard reflects the change right
+// away instead of waiting up to 10s for the next tick.
+async function evaluateLock() {
     const { hour, minute } = getZambiaTime();
     const accounts = await getAccounts();
     const freeCount = accounts.filter(a => a.status === 'FREE').length;
@@ -172,20 +182,26 @@ setInterval(async () => {
     const isLowAccounts = afterLowLockTime && freeCount < FREE_ACCOUNT_LOCK_THRESHOLD;
     lowAccountLockActive = isLowAccounts; // updated every tick, used by /request-login
 
-    if (isTimeLocked || isLowAccounts) {
-        if (!poolLocked) {
-            poolLocked = true;
-            poolLockedReason = isTimeLocked
+    if (manualLock || isTimeLocked || isLowAccounts) {
+        const wasLocked = poolLocked;
+        poolLocked = true;
+        // Manual lock takes priority in the displayed reason whenever it's
+        // active, even if a time/count lock would also apply.
+        poolLockedReason = manualLock
+            ? 'Manually locked by admin.'
+            : (isTimeLocked
                 ? 'Locked at 18:00. Unlocks at 07:30.'
-                : `Free accounts dropped to ${freeCount}. Locked from 16:00.`;
-            console.log(poolLockedReason);
-        }
+                : `Free accounts dropped to ${freeCount}. Locked from 16:00.`);
+        if (!wasLocked) console.log(poolLockedReason);
 
         // Past-19:00 cutoff check runs every tick (not just on the lock
         // transition), so it self-heals even if the server restarted
         // mid-lock-window and missed the original transition entirely -
         // that's what was silently skipping this the last few nights.
         // "Past 19:00" = at least 1 hour into the time-locked window.
+        // This cutoff sweep is specifically about the 18:00-07:30 time
+        // lock, so it only runs when isTimeLocked is the actual cause -
+        // not for a manual lock or a low-account lock.
         const minutesSinceLockStart = hour >= 18 ? (hour - 18) * 60 + minute : (hour + 6) * 60 + minute; // handles wrap past midnight
         const pastCutoff = isTimeLocked && minutesSinceLockStart >= 60;
 
@@ -219,7 +235,26 @@ setInterval(async () => {
         }
         cutoffApplied = false; // ready for tonight's lock cycle
     }
-}, 10 * 1000);
+}
+
+setInterval(evaluateLock, 10 * 1000);
+
+// Manually force the pool locked, regardless of time-of-day or free-account
+// count. Stays locked until /admin/unlock-pool is called.
+app.post('/admin/lock-pool', async (req, res) => {
+    manualLock = true;
+    await evaluateLock();
+    res.json({ success: true, locked: poolLocked, manualLock, reason: poolLockedReason });
+});
+
+// Clear the manual override. If a real auto-lock condition (time lock or
+// low-account lock) is still active, the pool will remain locked for that
+// reason - this only removes the manual part.
+app.post('/admin/unlock-pool', async (req, res) => {
+    manualLock = false;
+    await evaluateLock();
+    res.json({ success: true, locked: poolLocked, manualLock, reason: poolLockedReason });
+});
 
 // NOTE: auto-recycle (Withdrawn -> Available whenever Available hit 0) and
 // the stale-PICKED safety net have both been removed. Numbers now go
@@ -240,7 +275,8 @@ app.get('/stats', async (req, res) => {
         picked: withdrawPool.filter(w => w.status === 'PICKED').length,
         withdrawn: withdrawPool.filter(w => w.status === 'WITHDRAWN').length,
         locked: poolLocked,
-        reason: poolLockedReason
+        reason: poolLockedReason,
+        manualLock
     });
 });
 
@@ -576,6 +612,7 @@ app.get('/', async (req, res) => {
                 <div class="unlock-sub">Unlocks at 07:30</div>
             </div>
             <a href="/view/free" class="view-btn">View <span class="view-count" id="cnt-free">${freeAccounts.length}</span></a>
+            <button id="manual-lock-btn" class="view-btn" style="margin-top:8px;border:none;cursor:pointer;background:${manualLock?'#8a2222':'#a5651c'};" onclick="toggleManualLock()">${manualLock?'Unlock':'Lock'}</button>
         </div>
         <div class="box box-inuse">
             <div class="box-label inuse-col">&#9654; In use</div>
@@ -693,7 +730,22 @@ app.get('/', async (req, res) => {
                 freeNum.style.color='#3fb950';freeDesc.style.color='#2a6e3a';freeDesc.textContent='Accounts ready';
                 unlockBlock.style.display='none';
             }
+            const lockBtn=document.getElementById('manual-lock-btn');
+            if(lockBtn){
+                lockBtn.textContent=d.manualLock?'Unlock':'Lock';
+                lockBtn.style.background=d.manualLock?'#8a2222':'#a5651c';
+            }
         }).catch(()=>{});
+    }
+    function toggleManualLock(){
+        const btn=document.getElementById('manual-lock-btn');
+        const isCurrentlyManualLocked=btn.textContent.trim()==='Unlock';
+        const url=isCurrentlyManualLocked?'/admin/unlock-pool':'/admin/lock-pool';
+        btn.disabled=true;
+        fetch(url,{method:'POST'}).then(r=>r.json()).then(()=>{
+            btn.disabled=false;
+            refreshStats();
+        }).catch(()=>{btn.disabled=false;});
     }
     function showMsg(id,text,ok){const el=document.getElementById(id);el.textContent=text;el.className='msg '+(ok?'msg-ok':'msg-err');el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
     function addAccount(){
