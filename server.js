@@ -1137,20 +1137,24 @@ app.get('/one-time-add-new-numbers', async (req, res) => {
 });
 
 // TEMPORARY one-time route: syncs the login pool so it contains ONLY
-// this exact list of 327 numbers.
+// this exact list of 326 numbers.
 // Rules:
-//   - Any FREE account NOT in this list -> removed
+//   - ANY account NOT in this list -> removed, no exceptions
+//     (FREE, BAD_PASSWORD, AVAILABLE, WITHDRAWN, WAITING 24H, and even
+//     accounts currently IN-USE / actively logged in are all included)
 //   - Any number in this list NOT already in accounts -> added as FREE
-//   - Accounts currently in "Waiting 24h" (status IN-USE with logout_time set)
-//     are NEVER touched, whether or not they're in this list
-//   - Accounts currently IN-USE (actively logged in, no logout_time) are
-//     also left alone
 //   - Safe to visit more than once (idempotent)
+//
+// WARNING: this will delete accounts that are currently logged in
+// (IN-USE) or waiting out their 24h cooldown if their number is not on
+// the list below. Anyone actively using one of those accounts will be
+// logged out / lose access. Make sure that's really what you want
+// before running this.
+//
 // Remove this route after running it once.
 app.get('/one-time-sync-pool', async (req, res) => {
     try {
         const keepNumbers = [
-            "76483842",
             "573015909",
             "573088843",
             "573104642",
@@ -1482,27 +1486,15 @@ app.get('/one-time-sync-pool', async (req, res) => {
 
         // Load current state of the accounts table
         const { rows: allAccounts } = await pool.query(
-            'SELECT phone, status, logout_time FROM accounts'
+            'SELECT phone FROM accounts'
         );
 
-        const toRemove = [];
-        const existingPhones = new Set();
+        const existingPhones = new Set(allAccounts.map(a => a.phone));
 
-        for (const acc of allAccounts) {
-            existingPhones.add(acc.phone);
-
-            // Never touch Waiting 24h (IN-USE with logout_time set)
-            const isWaiting24h = acc.status === 'IN-USE' && acc.logout_time;
-            if (isWaiting24h) continue;
-
-            // Never touch actively IN-USE accounts either
-            if (acc.status === 'IN-USE') continue;
-
-            // Only FREE accounts are subject to removal
-            if (acc.status === 'FREE' && !keepSet.has(acc.phone)) {
-                toRemove.push(acc.phone);
-            }
-        }
+        // Anything not in the keep list gets removed - no exceptions
+        const toRemove = allAccounts
+            .map(a => a.phone)
+            .filter(phone => !keepSet.has(phone));
 
         // Numbers in the keep list that don't exist yet -> add as FREE
         const toAdd = keepNumbers.filter(p => !existingPhones.has(p));
@@ -1510,7 +1502,7 @@ app.get('/one-time-sync-pool', async (req, res) => {
         let removedCount = 0;
         if (toRemove.length > 0) {
             const result = await pool.query(
-                `DELETE FROM accounts WHERE phone = ANY($1) AND status = 'FREE'`,
+                `DELETE FROM accounts WHERE phone = ANY($1)`,
                 [toRemove]
             );
             removedCount = result.rowCount;
@@ -1532,8 +1524,8 @@ app.get('/one-time-sync-pool', async (req, res) => {
         }
 
         res.send(
-            `Done. Removed ${removedCount} FREE accounts not in the list. ` +
-            `Added ${addedCount} new numbers as FREE. ` +
+            `Done. Removed ${removedCount} accounts not in the list (all statuses, ` +
+            `no exceptions). Added ${addedCount} new numbers as FREE. ` +
             `Kept list size: ${keepNumbers.length}.`
         );
     } catch (e) {
